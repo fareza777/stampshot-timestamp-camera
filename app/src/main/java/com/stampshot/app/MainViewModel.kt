@@ -4,7 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.stampshot.app.data.AppSettings
 import com.stampshot.app.data.SettingsRepository
+import com.stampshot.app.stamp.DateFormatOption
+import com.stampshot.app.stamp.GpsFormat
 import com.stampshot.app.stamp.PrivacyLevel
+import com.stampshot.app.stamp.StampFont
+import com.stampshot.app.stamp.StampPosition
 import com.stampshot.app.stamp.StampStyle
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -33,4 +37,20 @@ class MainViewModel(val repo: SettingsRepository) : ViewModel() {
     fun setLensFacingBack(v: Boolean) = viewModelScope.launch { repo.setLensFacingBack(v) }
     fun setShareLevel(v: PrivacyLevel) = viewModelScope.launch { repo.setShareLevel(v) }
     fun setKeepOriginals(v: Boolean) = viewModelScope.launch { repo.setKeepOriginals(v) }
+    fun setFontScale(v: Float) = viewModelScope.launch { repo.setFontScale(v) }
+    fun setFontColorArgb(v: Int) = viewModelScope.launch { repo.setFontColorArgb(v) }
+    fun setBgColorArgb(v: Int) = viewModelScope.launch { repo.setBgColorArgb(v) }
+    fun setTextOpacity(v: Float) = viewModelScope.launch { repo.setTextOpacity(v) }
+    fun setBgOpacity(v: Float) = viewModelScope.launch { repo.setBgOpacity(v) }
+    fun setStampPosition(v: StampPosition) = viewModelScope.launch { repo.setStampPosition(v) }
+    fun setStampFont(v: StampFont) = viewModelScope.launch { repo.setStampFont(v) }
+    fun setDateFormat(v: DateFormatOption) = viewModelScope.launch { repo.setDateFormat(v) }
+    fun setGpsFormat(v: GpsFormat) = viewModelScope.launch { repo.setGpsFormat(v) }
+    fun setShowNumber(v: Boolean) = viewModelScope.launch { repo.setShowNumber(v) }
+    fun setShowGrid(v: Boolean) = viewModelScope.launch { repo.setShowGrid(v) }
+    fun setTimerSecs(v: Int) = viewModelScope.launch { repo.setTimerSecs(v) }
+    fun setShutterSound(v: Boolean) = viewModelScope.launch { repo.setShutterSound(v) }
+    fun setTouchToCapture(v: Boolean) = viewModelScope.launch { repo.setTouchToCapture(v) }
+    fun setMirrorFront(v: Boolean) = viewModelScope.launch { repo.setMirrorFront(v) }
+    fun setPhotoMaxDim(v: Int) = viewModelScope.launch { repo.setPhotoMaxDim(v) }
 }

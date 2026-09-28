@@ -182,7 +182,18 @@ fun GalleryScreen(viewModel: MainViewModel, onBack: () -> Unit) {
             onShare = { level ->
                 scope.launch {
                     val settings = viewModel.settings.value
-                    val result = PrivateShare.share(context, photo.uri, photo.displayName, level, settings.style)
+                    val result = PrivateShare.share(
+                        context, photo.uri, photo.displayName, level, settings.style,
+                        options = com.stampshot.app.stamp.StampOptions(
+                            fontScale = settings.fontScale,
+                            fontColorArgb = settings.fontColorArgb,
+                            bgColorArgb = settings.bgColorArgb,
+                            textOpacity = settings.textOpacity,
+                            bgOpacity = settings.bgOpacity,
+                            position = settings.stampPosition,
+                            font = settings.stampFont,
+                        ),
+                    )
                     if (result.fellBackToPixelsOnly) {
                         Toast.makeText(
                             context,

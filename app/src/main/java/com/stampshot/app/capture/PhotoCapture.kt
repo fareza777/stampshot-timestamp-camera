@@ -14,6 +14,7 @@ import androidx.camera.core.ImageCaptureException
 import androidx.exifinterface.media.ExifInterface
 import com.stampshot.app.data.PhotoIndex
 import com.stampshot.app.stamp.StampInfo
+import com.stampshot.app.stamp.StampOptions
 import com.stampshot.app.stamp.StampRenderer
 import com.stampshot.app.stamp.StampStyle
 import kotlinx.coroutines.Dispatchers
@@ -22,6 +23,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import java.io.File
 import java.util.Date
+import kotlin.math.max
 import java.util.concurrent.Executor
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -43,13 +45,29 @@ class PhotoCapture(private val context: Context) {
         info: StampInfo,
         style: StampStyle,
         keepOriginal: Boolean,
+        options: StampOptions = StampOptions(),
+        mirror: Boolean = false,
+        maxDim: Int = 0,
     ): SavedPhoto = withContext(Dispatchers.IO) {
         val raw = File(context.cacheDir, "cap_${System.currentTimeMillis()}.jpg")
         try {
             withTimeout(45_000) { takePicture(imageCapture, raw, executor) }
 
-            val captured = decodeRotated(raw) ?: error("Could not decode captured photo")
-            val stamped = StampRenderer.render(captured, info, style)
+            var captured = decodeRotated(raw) ?: error("Could not decode captured photo")
+            if (mirror) {
+                val m = Matrix().apply { postScale(-1f, 1f) }
+                captured = Bitmap.createBitmap(captured, 0, 0, captured.width, captured.height, m, true)
+            }
+            if (maxDim > 0 && max(captured.width, captured.height) > maxDim) {
+                val scale = maxDim.toFloat() / max(captured.width, captured.height)
+                captured = Bitmap.createScaledBitmap(
+                    captured,
+                    (captured.width * scale).toInt(),
+                    (captured.height * scale).toInt(),
+                    true,
+                )
+            }
+            val stamped = StampRenderer.render(captured, info, style, options)
 
             val displayName = buildFileName(info)
             val uri = saveToMediaStore(displayName, stamped)

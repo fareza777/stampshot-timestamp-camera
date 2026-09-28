@@ -3,18 +3,28 @@ package com.stampshot.app.ui.camera
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -26,10 +36,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.stampshot.app.MainViewModel
+import com.stampshot.app.data.AppSettings
 import com.stampshot.app.location.LocationStamper
+import com.stampshot.app.stamp.DateFormatOption
+import com.stampshot.app.stamp.GpsFormat
+import com.stampshot.app.stamp.StampFont
+import com.stampshot.app.stamp.StampPosition
 import com.stampshot.app.stamp.StampStyle
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -38,6 +54,7 @@ fun SettingsSheet(viewModel: MainViewModel, onDismiss: () -> Unit) {
     val settings by viewModel.settings.collectAsState()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var pendingLocationToggle by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     val locationPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -46,7 +63,7 @@ fun SettingsSheet(viewModel: MainViewModel, onDismiss: () -> Unit) {
         pendingLocationToggle = null
     }
 
-    fun enableLocationToggle(apply: () -> Unit, context: android.content.Context) {
+    fun enableLocationToggle(apply: () -> Unit) {
         if (LocationStamper.hasPermission(context)) {
             apply()
         } else {
@@ -64,16 +81,18 @@ fun SettingsSheet(viewModel: MainViewModel, onDismiss: () -> Unit) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .navigationBarsPadding()
                 .padding(horizontal = 20.dp, vertical = 8.dp),
         ) {
-            Text("Stamp style", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            // ---------- Stamp style ----------
+            SectionHeader("Stamp style")
             StampStyle.entries.forEach { style ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { viewModel.setStyle(style) }
-                        .padding(vertical = 6.dp),
+                        .padding(vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     RadioButton(selected = settings.style == style, onClick = { viewModel.setStyle(style) })
@@ -81,7 +100,7 @@ fun SettingsSheet(viewModel: MainViewModel, onDismiss: () -> Unit) {
                         Text(style.label, style = MaterialTheme.typography.bodyLarge)
                         Text(
                             when (style) {
-                                StampStyle.MINIMAL_CORNER -> "Small translucent block, bottom-left"
+                                StampStyle.MINIMAL_CORNER -> "Small translucent block in a corner"
                                 StampStyle.CLEAN_BOTTOM_BAR -> "Full-width bar along the bottom"
                                 StampStyle.WORK_PROOF -> "Labeled card for site & job documentation"
                                 StampStyle.BOTTOM_INFO_STRIP -> "Photo stays clean — info strip added below"
@@ -93,25 +112,71 @@ fun SettingsSheet(viewModel: MainViewModel, onDismiss: () -> Unit) {
                 }
             }
 
-            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
-            Text("Stamp content", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            // ---------- Appearance ----------
+            SectionHeader("Stamp appearance")
+            if (settings.style == StampStyle.MINIMAL_CORNER || settings.style == StampStyle.WORK_PROOF) {
+                ChipRow(
+                    label = "Position",
+                    options = StampPosition.entries.map { it to it.label },
+                    selected = settings.stampPosition,
+                ) { viewModel.setStampPosition(it) }
+            }
+            ChipRow(
+                label = "Text size",
+                options = AppSettings.FONT_SCALE_OPTIONS,
+                selected = settings.fontScale,
+            ) { viewModel.setFontScale(it) }
+            ChipRow(
+                label = "Font",
+                options = StampFont.entries.map { it to it.label },
+                selected = settings.stampFont,
+            ) { viewModel.setStampFont(it) }
+            ColorRow(
+                label = "Text color",
+                choices = AppSettings.FONT_COLOR_CHOICES,
+                selected = settings.fontColorArgb,
+            ) { viewModel.setFontColorArgb(it) }
+            ColorRow(
+                label = "Background color",
+                choices = AppSettings.BG_COLOR_CHOICES,
+                selected = settings.bgColorArgb,
+            ) { viewModel.setBgColorArgb(it) }
+            SliderRow(
+                label = "Text opacity",
+                value = settings.textOpacity,
+                range = 0.2f..1f,
+            ) { viewModel.setTextOpacity(it) }
+            SliderRow(
+                label = "Background opacity",
+                value = settings.bgOpacity,
+                range = 0f..1f,
+            ) { viewModel.setBgOpacity(it) }
 
-            val context = androidx.compose.ui.platform.LocalContext.current
-            ToggleRow(
-                title = "Address on stamp",
-                checked = settings.showAddress,
-            ) { v ->
-                if (v) enableLocationToggle({ viewModel.setShowAddress(true) }, context)
+            // ---------- Stamp content ----------
+            SectionHeader("Stamp content")
+            ToggleRow(title = "Photo number (#001)", checked = settings.showNumber) {
+                viewModel.setShowNumber(it)
+            }
+            ToggleRow(title = "Address on stamp", checked = settings.showAddress) { v ->
+                if (v) enableLocationToggle { viewModel.setShowAddress(true) }
                 else viewModel.setShowAddress(false)
             }
-            ToggleRow(
-                title = "GPS coordinates",
-                checked = settings.showGps,
-            ) { v ->
-                if (v) enableLocationToggle({ viewModel.setShowGps(true) }, context)
+            ToggleRow(title = "GPS coordinates", checked = settings.showGps) { v ->
+                if (v) enableLocationToggle { viewModel.setShowGps(true) }
                 else viewModel.setShowGps(false)
             }
-
+            if (settings.showGps) {
+                ChipRow(
+                    label = "GPS format",
+                    options = GpsFormat.entries.map { it to it.label },
+                    selected = settings.gpsFormat,
+                ) { viewModel.setGpsFormat(it) }
+            }
+            ChipRow(
+                label = "Date format",
+                options = DateFormatOption.entries.map { it to it.label },
+                selected = settings.dateFormat,
+            ) { viewModel.setDateFormat(it) }
             OutlinedTextField(
                 value = settings.note,
                 onValueChange = { viewModel.setNote(it) },
@@ -123,7 +188,37 @@ fun SettingsSheet(viewModel: MainViewModel, onDismiss: () -> Unit) {
                     .padding(top = 8.dp),
             )
 
-            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+            // ---------- Camera ----------
+            SectionHeader("Camera")
+            ToggleRow(title = "Grid lines", checked = settings.showGrid) {
+                viewModel.setShowGrid(it)
+            }
+            ToggleRow(title = "Shutter sound", checked = settings.shutterSound) {
+                viewModel.setShutterSound(it)
+            }
+            ToggleRow(
+                title = "Touch to take photo",
+                subtitle = "Tap anywhere on the preview to shoot (tap-to-focus is then disabled)",
+                checked = settings.touchToCapture,
+            ) { viewModel.setTouchToCapture(it) }
+            ToggleRow(
+                title = "Mirror front camera",
+                subtitle = "Flip front-camera photos so text looks natural",
+                checked = settings.mirrorFront,
+            ) { viewModel.setMirrorFront(it) }
+            ChipRow(
+                label = "Timer",
+                options = AppSettings.TIMER_OPTIONS,
+                selected = settings.timerSecs,
+            ) { viewModel.setTimerSecs(it) }
+            ChipRow(
+                label = "Photo size",
+                options = AppSettings.RES_OPTIONS,
+                selected = settings.photoMaxDim,
+            ) { viewModel.setPhotoMaxDim(it) }
+
+            // ---------- Storage & sharing ----------
+            SectionHeader("Storage & sharing")
             ToggleRow(
                 title = "Keep originals for private sharing",
                 subtitle = "Stores a clean copy in private app storage so Private/Approximate shares can fully hide stamped location data. Uses extra storage.",
@@ -137,6 +232,93 @@ fun SettingsSheet(viewModel: MainViewModel, onDismiss: () -> Unit) {
                 modifier = Modifier.padding(vertical = 16.dp),
             )
         }
+    }
+}
+
+@Composable
+private fun SectionHeader(title: String) {
+    Column {
+        HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun <T> ChipRow(
+    label: String,
+    options: List<Pair<T, String>>,
+    selected: T,
+    onSelect: (T) -> Unit,
+) {
+    Column(modifier = Modifier.padding(top = 8.dp)) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            options.forEach { (value, text) ->
+                FilterChip(
+                    selected = selected == value,
+                    onClick = { onSelect(value) },
+                    label = { Text(text, style = MaterialTheme.typography.labelSmall) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ColorRow(
+    label: String,
+    choices: List<Pair<Int, String>>,
+    selected: Int,
+    onSelect: (Int) -> Unit,
+) {
+    Column(modifier = Modifier.padding(top = 8.dp)) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            choices.forEach { (color, name) ->
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clickable { onSelect(color) }
+                            .background(
+                                if (color == -1) Color(0xFF9AA4B0) else Color(color),
+                                CircleShape,
+                            )
+                            .border(
+                                width = if (selected == color) 3.dp else 1.dp,
+                                color = if (selected == color) MaterialTheme.colorScheme.primary
+                                    else Color(0x33000000),
+                                shape = CircleShape,
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (color == -1) {
+                            Text("A", style = MaterialTheme.typography.labelSmall, color = Color.White)
+                        }
+                    }
+                    Text(name, style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SliderRow(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit) {
+    Column(modifier = Modifier.padding(top = 6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("%d%%".format((value * 100).toInt()), style = MaterialTheme.typography.labelMedium)
+        }
+        Slider(value = value, onValueChange = onChange, valueRange = range)
     }
 }
 

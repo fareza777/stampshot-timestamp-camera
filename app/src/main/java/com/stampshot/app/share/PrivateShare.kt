@@ -9,6 +9,7 @@ import androidx.core.content.FileProvider
 import com.stampshot.app.data.PhotoIndex
 import com.stampshot.app.stamp.PrivacyLevel
 import com.stampshot.app.stamp.StampInfo
+import com.stampshot.app.stamp.StampOptions
 import com.stampshot.app.stamp.StampRenderer
 import com.stampshot.app.stamp.StampStyle
 import kotlinx.coroutines.Dispatchers
@@ -37,6 +38,7 @@ object PrivateShare {
         displayName: String,
         level: PrivacyLevel,
         style: StampStyle,
+        options: StampOptions = StampOptions(),
     ): ShareResult = withContext(Dispatchers.IO) {
         try {
             when (level) {
@@ -46,7 +48,7 @@ object PrivateShare {
                 }
                 else -> {
                     val record = PhotoIndex(context).get(displayName)
-                    val variant = renderVariant(context, photoUri, displayName, record, level, style)
+                    val variant = renderVariant(context, photoUri, displayName, record, level, style, options)
                     launchShare(context, variant)
                     ShareResult(
                         launched = true,
@@ -71,6 +73,7 @@ object PrivateShare {
         record: PhotoIndex.Record?,
         level: PrivacyLevel,
         style: StampStyle,
+        options: StampOptions,
     ): Uri {
         val outFile = File(File(context.cacheDir, "shared").apply { mkdirs() },
             "share_${level.name.lowercase()}_${System.currentTimeMillis()}.jpg")
@@ -82,7 +85,7 @@ object PrivateShare {
             val clean = BitmapFactory.decodeFile(originalFile.absolutePath)
                 ?: error("Could not decode kept original")
             val info = recordToInfo(record).reduced(level)
-            bitmap = StampRenderer.render(clean, info, style)
+            bitmap = StampRenderer.render(clean, info, style, options)
             clean.recycle()
             recycled = true
         } else {

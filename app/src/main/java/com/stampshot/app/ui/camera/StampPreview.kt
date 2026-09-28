@@ -3,6 +3,7 @@ package com.stampshot.app.ui.camera
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -97,44 +99,91 @@ fun StampPreview(
     }
 
     val darkScene = luminance < 105.0
-    val text = if (darkScene) Color(0xFFF5F7FA) else Color(0xFF12161A)
-    val textDim = if (darkScene) Color(0xFFC8CFD8) else Color(0xFF3C444E)
-    val scrim = if (darkScene) Color(0x94080A0E) else Color(0x9EFAFBFD)
+    val s = settings
+    fun Color.withOpacity(o: Float) = copy(alpha = alpha * o)
+    val baseText = if (s.fontColorArgb != -1) Color(s.fontColorArgb)
+        else if (darkScene) Color(0xFFF5F7FA) else Color(0xFF12161A)
+    val text = baseText.withOpacity(s.textOpacity)
+    val textDim = baseText.copy(alpha = baseText.alpha * 0.8f).withOpacity(s.textOpacity)
+    val baseScrim = if (s.bgColorArgb != -1) Color(s.bgColorArgb)
+        else if (darkScene) Color(0xFF080A0E) else Color(0xFFFAFBFD)
+    val scrim = baseScrim.withOpacity(s.bgOpacity)
 
-    val date = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(now))
+    val fontFamily = when (s.stampFont) {
+        com.stampshot.app.stamp.StampFont.SERIF -> androidx.compose.ui.text.font.FontFamily.Serif
+        com.stampshot.app.stamp.StampFont.MONO -> androidx.compose.ui.text.font.FontFamily.Monospace
+        else -> androidx.compose.ui.text.font.FontFamily.Default
+    }
+    val scale = s.fontScale
+
+    val date = SimpleDateFormat(s.dateFormat.pattern, Locale.getDefault()).format(Date(now))
     val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(now))
-    val sessionLine = "${settings.currentSession} · #%03d".format(settings.nextNumber())
+    val sessionLine = if (s.showNumber) "${s.currentSession} · #%03d".format(s.nextNumber()) else s.currentSession
     val lines = buildList {
         add("$date · $time")
         add(sessionLine)
-        if (settings.showAddress && locationHint != null) add(locationHint!!)
-        if (settings.showGps && coordsHint != null) add(coordsHint!!)
-        if (settings.note.isNotBlank()) add(settings.note)
+        if (s.showAddress && locationHint != null) add(locationHint!!)
+        if (s.showGps && coordsHint != null) add(coordsHint!!)
+        if (s.note.isNotBlank()) add(s.note)
     }
 
-    when (settings.style) {
-        StampStyle.MINIMAL_CORNER -> CornerStamp(lines, scrim, text, textDim, modifier)
-        StampStyle.CLEAN_BOTTOM_BAR -> BottomBarStamp(lines, scrim, text, textDim, modifier)
-        StampStyle.WORK_PROOF -> WorkProofStamp(lines, scrim, text, textDim, modifier)
-        StampStyle.BOTTOM_INFO_STRIP -> InfoStripStamp(lines, text, textDim, modifier)
+    val cornerMod = when (s.stampPosition) {
+        com.stampshot.app.stamp.StampPosition.BOTTOM_LEFT ->
+            modifier.padding(start = 10.dp, bottom = 150.dp)
+        com.stampshot.app.stamp.StampPosition.BOTTOM_RIGHT ->
+            modifier.padding(end = 10.dp, bottom = 150.dp).fillMaxWidth()
+        com.stampshot.app.stamp.StampPosition.TOP_LEFT ->
+            modifier.padding(start = 10.dp, top = 90.dp)
+        com.stampshot.app.stamp.StampPosition.TOP_RIGHT ->
+            modifier.padding(end = 10.dp, top = 90.dp).fillMaxWidth()
+    }
+    val alignEnd = s.stampPosition == com.stampshot.app.stamp.StampPosition.BOTTOM_RIGHT ||
+        s.stampPosition == com.stampshot.app.stamp.StampPosition.TOP_RIGHT
+
+    when (s.style) {
+        StampStyle.MINIMAL_CORNER -> CornerStamp(lines, scrim, text, textDim, cornerMod, scale, fontFamily, alignEnd)
+        StampStyle.CLEAN_BOTTOM_BAR -> BottomBarStamp(lines, scrim, text, textDim, modifier, scale, fontFamily)
+        StampStyle.WORK_PROOF -> WorkProofStamp(lines, scrim, text, textDim, cornerMod, scale, fontFamily, alignEnd)
+        StampStyle.BOTTOM_INFO_STRIP -> InfoStripStamp(lines, scrim, text, textDim, modifier, scale, fontFamily)
     }
 }
 
 @Composable
-private fun CornerStamp(lines: List<String>, scrim: Color, text: Color, textDim: Color, modifier: Modifier) {
-    Column(
-        modifier = modifier
-            .padding(start = 10.dp, bottom = 150.dp)
-            .clip(RoundedCornerShape(6.dp))
-            .background(scrim)
-            .padding(horizontal = 10.dp, vertical = 7.dp),
-    ) {
-        StampLines(lines, text, textDim, primarySp = 13f, secondarySp = 11f)
+private fun StampBox(scrim: Color, alignEnd: Boolean, modifier: Modifier, content: @Composable () -> Unit) {
+    if (alignEnd) {
+        Row(modifier = modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            Column(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(scrim)
+                    .padding(horizontal = 10.dp, vertical = 7.dp),
+            ) { content() }
+        }
+    } else {
+        Column(
+            modifier = modifier
+                .clip(RoundedCornerShape(6.dp))
+                .background(scrim)
+                .padding(horizontal = 10.dp, vertical = 7.dp),
+        ) { content() }
     }
 }
 
 @Composable
-private fun BottomBarStamp(lines: List<String>, scrim: Color, text: Color, textDim: Color, modifier: Modifier) {
+private fun CornerStamp(
+    lines: List<String>, scrim: Color, text: Color, textDim: Color,
+    modifier: Modifier, scale: Float, fontFamily: FontFamily, alignEnd: Boolean,
+) {
+    StampBox(scrim, alignEnd, modifier) {
+        StampLines(lines, text, textDim, primarySp = 13f * scale, secondarySp = 11f * scale, fontFamily = fontFamily)
+    }
+}
+
+@Composable
+private fun BottomBarStamp(
+    lines: List<String>, scrim: Color, text: Color, textDim: Color,
+    modifier: Modifier, scale: Float, fontFamily: FontFamily,
+) {
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -144,61 +193,80 @@ private fun BottomBarStamp(lines: List<String>, scrim: Color, text: Color, textD
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Column(modifier = Modifier.weight(0.5f)) {
-            StampLines(lines.take(2), text, textDim, primarySp = 13f, secondarySp = 11f)
+            StampLines(lines.take(2), text, textDim, primarySp = 13f * scale, secondarySp = 11f * scale, fontFamily = fontFamily)
         }
         Column(
             modifier = Modifier.weight(0.5f),
             horizontalAlignment = androidx.compose.ui.Alignment.End,
         ) {
-            StampLines(lines.drop(2), text, textDim, primarySp = 11f, secondarySp = 10f)
+            StampLines(lines.drop(2), text, textDim, primarySp = 11f * scale, secondarySp = 10f * scale, fontFamily = fontFamily)
         }
     }
 }
 
 @Composable
-private fun WorkProofStamp(lines: List<String>, scrim: Color, text: Color, textDim: Color, modifier: Modifier) {
-    Row(
-        modifier = modifier
-            .padding(start = 10.dp, bottom = 150.dp)
-            .clip(RoundedCornerShape(4.dp))
-            .background(scrim),
-    ) {
-        Column(
+private fun WorkProofStamp(
+    lines: List<String>, scrim: Color, text: Color, textDim: Color,
+    modifier: Modifier, scale: Float, fontFamily: FontFamily, alignEnd: Boolean,
+) {
+    val accent = text
+    val body: @Composable () -> Unit = {
+        Row(
             modifier = Modifier
-                .padding(start = 6.dp)
-                .background(Color(0xFF4FC3F7))
-                .padding(start = 2.dp),
-        ) {}
-        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)) {
-            Text(
-                lines.getOrElse(1) { "" },
-                color = text,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-            )
-            StampLines(listOf(lines[0]) + lines.drop(2), text, textDim, primarySp = 11f, secondarySp = 10f)
+                .clip(RoundedCornerShape(4.dp))
+                .background(scrim),
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(start = 6.dp)
+                    .background(accent)
+                    .padding(start = 2.dp),
+            ) {}
+            Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)) {
+                Text(
+                    lines.getOrElse(1) { "" },
+                    color = text,
+                    fontSize = (13f * scale).sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = fontFamily,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                StampLines(
+                    listOf(lines[0]) + lines.drop(2), text, textDim,
+                    primarySp = 11f * scale, secondarySp = 10f * scale, fontFamily = fontFamily,
+                )
+            }
         }
+    }
+    if (alignEnd) {
+        Row(modifier = modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { body() }
+    } else {
+        Box(modifier = modifier) { body() }
     }
 }
 
 @Composable
-private fun InfoStripStamp(lines: List<String>, text: Color, textDim: Color, modifier: Modifier) {
+private fun InfoStripStamp(
+    lines: List<String>, scrim: Color, text: Color, textDim: Color,
+    modifier: Modifier, scale: Float, fontFamily: FontFamily,
+) {
     Row(
         modifier = modifier
             .fillMaxWidth()
             .padding(bottom = 118.dp)
-            .background(Color(0xFF101318))
+            .background(scrim)
             .padding(horizontal = 14.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Column(modifier = Modifier.weight(0.5f)) {
-            StampLines(lines.take(2), Color(0xFFF5F7FA), Color(0xFFC4CCD6), primarySp = 12f, secondarySp = 10f)
+            StampLines(lines.take(2), text, textDim, primarySp = 12f * scale, secondarySp = 10f * scale, fontFamily = fontFamily)
         }
         Column(
             modifier = Modifier.weight(0.5f),
             horizontalAlignment = androidx.compose.ui.Alignment.End,
         ) {
-            StampLines(lines.drop(2), Color(0xFFF5F7FA), Color(0xFFC4CCD6), primarySp = 10f, secondarySp = 10f)
+            StampLines(lines.drop(2), text, textDim, primarySp = 10f * scale, secondarySp = 10f * scale, fontFamily = fontFamily)
         }
     }
 }
@@ -210,6 +278,7 @@ private fun StampLines(
     textDim: Color,
     primarySp: Float,
     secondarySp: Float,
+    fontFamily: FontFamily = FontFamily.Default,
 ) {
     lines.forEachIndexed { i, line ->
         Text(
@@ -217,6 +286,7 @@ private fun StampLines(
             color = if (i == 0) text else textDim,
             fontSize = (if (i == 0) primarySp else secondarySp).sp,
             fontWeight = if (i == 0) FontWeight.SemiBold else FontWeight.Normal,
+            fontFamily = fontFamily,
             style = MaterialTheme.typography.bodySmall,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

@@ -12,6 +12,40 @@ enum class StampStyle(val label: String, val shortLabel: String) {
     BOTTOM_INFO_STRIP("Bottom Info Strip", "Info Strip"),
 }
 
+enum class StampPosition(val label: String) {
+    BOTTOM_LEFT("Bottom Left"),
+    BOTTOM_RIGHT("Bottom Right"),
+    TOP_LEFT("Top Left"),
+    TOP_RIGHT("Top Right"),
+}
+
+enum class StampFont(val label: String) {
+    DEFAULT("Sans"), SERIF("Serif"), MONO("Mono"),
+}
+
+enum class DateFormatOption(val label: String, val pattern: String) {
+    DAY_MONTH_YEAR("28 Sep 2026", "dd MMM yyyy"),
+    WEEKDAY_FULL("Sunday, 28 September 2026", "EEEE, dd MMMM yyyy"),
+    SLASH("28/09/2026", "dd/MM/yyyy"),
+    ISO("2026-09-28", "yyyy-MM-dd"),
+}
+
+enum class GpsFormat(val label: String) {
+    DECIMAL("39.23726, -123.15003"),
+    DMS("39°14'14\"N, 123°9'0\"W"),
+}
+
+/** Per-capture look: colors carry ARGB, -1 means "auto" (Smart Readability). */
+data class StampOptions(
+    val fontScale: Float = 1f,
+    val fontColorArgb: Int = -1,
+    val bgColorArgb: Int = -1,
+    val textOpacity: Float = 1f,
+    val bgOpacity: Float = 0.62f,
+    val position: StampPosition = StampPosition.BOTTOM_LEFT,
+    val font: StampFont = StampFont.DEFAULT,
+)
+
 enum class PrivacyLevel(val label: String, val description: String) {
     FULL("Full", "Timestamp + address + GPS"),
     APPROXIMATE("Approximate", "Timestamp + city/area only"),
@@ -29,15 +63,18 @@ data class StampInfo(
     val longitude: Double? = null,
     val showAddress: Boolean = true,
     val showGps: Boolean = true,
+    val showNumber: Boolean = true,
+    val dateFormat: DateFormatOption = DateFormatOption.DAY_MONTH_YEAR,
+    val gpsFormat: GpsFormat = GpsFormat.DECIMAL,
 ) {
-    fun date(): String = DATE_FMT.format(Date(timestampMillis))
+    fun date(): String = SimpleDateFormat(dateFormat.pattern, Locale.getDefault()).format(Date(timestampMillis))
 
     fun time(): String = TIME_FMT.format(Date(timestampMillis))
 
     fun dateTime(): String = "${date()} · ${time()}"
 
     fun sessionLine(): String? {
-        val number = photoNumber?.let { "#%03d".format(it) }
+        val number = if (showNumber) photoNumber?.let { "#%03d".format(it) } else null
         return when {
             !sessionName.isNullOrBlank() && number != null -> "$sessionName · $number"
             !sessionName.isNullOrBlank() -> sessionName
@@ -51,8 +88,21 @@ data class StampInfo(
 
     fun gpsLine(): String? =
         if (showGps && latitude != null && longitude != null) {
-            "%.5f, %.5f".format(Locale.US, latitude, longitude)
+            when (gpsFormat) {
+                GpsFormat.DECIMAL -> "%.5f, %.5f".format(Locale.US, latitude, longitude)
+                GpsFormat.DMS -> "${dms(latitude, true)}, ${dms(longitude, false)}"
+            }
         } else null
+
+    private fun dms(value: Double, isLat: Boolean): String {
+        val dir = if (isLat) (if (value >= 0) "N" else "S") else (if (value >= 0) "E" else "W")
+        val abs = kotlin.math.abs(value)
+        val d = abs.toInt()
+        val mFull = (abs - d) * 60
+        val m = mFull.toInt()
+        val s = ((mFull - m) * 60).toInt()
+        return "$d°$m'$s\"$dir"
+    }
 
     fun noteLine(): String? = note?.takeIf { it.isNotBlank() }
 
@@ -85,7 +135,6 @@ data class StampInfo(
         (showAddress && !address.isNullOrBlank()) || (showGps && latitude != null)
 
     companion object {
-        private val DATE_FMT = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
         private val TIME_FMT = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
         val FILE_TS_FMT = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
         val EXIF_FMT = SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US)

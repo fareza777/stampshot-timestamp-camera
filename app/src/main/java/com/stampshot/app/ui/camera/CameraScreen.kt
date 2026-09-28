@@ -71,6 +71,7 @@ import com.stampshot.app.capture.PhotoCapture
 import com.stampshot.app.data.AppSettings
 import com.stampshot.app.location.LocationStamper
 import com.stampshot.app.stamp.StampInfo
+import com.stampshot.app.stamp.StampOptions
 import com.stampshot.app.stamp.StampStyle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.guava.await
@@ -155,6 +156,73 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
         }
     }
 
+    // ---------- Capture ----------
+    var capturing by remember { mutableStateOf(false) }
+    var flash by remember { mutableStateOf(false) }
+    var countdown by remember { mutableStateOf<Int?>(null) }
+    val executor = remember { ContextCompat.getMainExecutor(context) }
+    val shutterFx = remember { android.media.MediaActionSound() }
+
+    fun shoot() {
+        val ic = imageCapture ?: return
+        if (capturing) return
+        capturing = true
+        scope.launch {
+            try {
+                val s = viewModel.repo.current()
+                if (s.timerSecs > 0) {
+                    for (t in s.timerSecs downTo 1) {
+                        countdown = t
+                        delay(1000)
+                    }
+                    countdown = null
+                }
+                flash = true
+                if (s.shutterSound) shutterFx.play(android.media.MediaActionSound.SHUTTER_CLICK)
+                val number = viewModel.repo.nextNumber(s.currentSession)
+                val loc = if ((s.showAddress || s.showGps) && LocationStamper.hasPermission(context)) {
+                    LocationStamper.snapshot(context)
+                } else null
+                val info = StampInfo(
+                    timestampMillis = System.currentTimeMillis(),
+                    sessionName = s.currentSession,
+                    photoNumber = number,
+                    note = s.note.ifBlank { null },
+                    address = loc?.address,
+                    city = loc?.city,
+                    latitude = loc?.location?.latitude,
+                    longitude = loc?.location?.longitude,
+                    showAddress = s.showAddress,
+                    showGps = s.showGps,
+                    showNumber = s.showNumber,
+                    dateFormat = s.dateFormat,
+                    gpsFormat = s.gpsFormat,
+                )
+                val opts = StampOptions(
+                    fontScale = s.fontScale,
+                    fontColorArgb = s.fontColorArgb,
+                    bgColorArgb = s.bgColorArgb,
+                    textOpacity = s.textOpacity,
+                    bgOpacity = s.bgOpacity,
+                    position = s.stampPosition,
+                    font = s.stampFont,
+                )
+                val saved = PhotoCapture(context).capture(
+                    ic, executor, info, s.style, s.keepOriginals,
+                    options = opts,
+                    mirror = s.mirrorFront && !s.lensFacingBack,
+                    maxDim = s.photoMaxDim,
+                )
+                Toast.makeText(context, "Saved photo #%03d".format(saved.number), Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(context, "Capture failed: ${e.message}", Toast.LENGTH_SHORT).show()
+            } finally {
+                capturing = false
+                countdown = null
+            }
+        }
+    }
+
     // Tap-to-focus + pinch-to-zoom in a single touch listener.
     var focusPoint by remember { mutableStateOf<Offset?>(null) }
     LaunchedEffect(previewView) {
@@ -172,15 +240,19 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
         previewView.setOnTouchListener { view, event ->
             scaleDetector.onTouchEvent(event)
             if (event.action == android.view.MotionEvent.ACTION_DOWN && !scaleDetector.isInProgress) {
-                val cam = camera
-                if (cam != null) {
-                    val point = previewView.meteringPointFactory.createPoint(event.x, event.y)
-                    val action = FocusMeteringAction.Builder(
-                        point,
-                        FocusMeteringAction.FLAG_AF or FocusMeteringAction.FLAG_AE,
-                    ).setAutoCancelDuration(3, TimeUnit.SECONDS).build()
-                    cam.cameraControl.startFocusAndMetering(action)
-                    focusPoint = Offset(event.x, event.y)
+                if (settings.touchToCapture) {
+                    shoot()
+                } else {
+                    val cam = camera
+                    if (cam != null) {
+                        val point = previewView.meteringPointFactory.createPoint(event.x, event.y)
+                        val action = FocusMeteringAction.Builder(
+                            point,
+                            FocusMeteringAction.FLAG_AF or FocusMeteringAction.FLAG_AE,
+                        ).setAutoCancelDuration(3, TimeUnit.SECONDS).build()
+                        cam.cameraControl.startFocusAndMetering(action)
+                        focusPoint = Offset(event.x, event.y)
+                    }
                 }
             }
             true
@@ -193,45 +265,6 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
         }
     }
 
-    // ---------- Capture ----------
-    var capturing by remember { mutableStateOf(false) }
-    var flash by remember { mutableStateOf(false) }
-    val executor = remember { ContextCompat.getMainExecutor(context) }
-
-    fun shoot() {
-        val ic = imageCapture ?: return
-        if (capturing) return
-        capturing = true
-        flash = true
-        scope.launch {
-            try {
-                val s = viewModel.repo.current()
-                val number = viewModel.repo.nextNumber(s.currentSession)
-                val loc = if ((s.showAddress || s.showGps) && LocationStamper.hasPermission(context)) {
-                    LocationStamper.snapshot(context)
-                } else null
-                val info = StampInfo(
-                    timestampMillis = System.currentTimeMillis(),
-                    sessionName = s.currentSession,
-                    photoNumber = number,
-                    note = s.note.ifBlank { null },
-                    address = loc?.address,
-                    city = loc?.city,
-                    latitude = loc?.location?.latitude,
-                    longitude = loc?.location?.longitude,
-                    showAddress = s.showAddress,
-                    showGps = s.showGps,
-                )
-                val saved = PhotoCapture(context).capture(ic, executor, info, s.style, s.keepOriginals)
-                Toast.makeText(context, "Saved photo #%03d".format(saved.number), Toast.LENGTH_SHORT).show()
-            } catch (e: Exception) {
-                Toast.makeText(context, "Capture failed: ${e.message}", Toast.LENGTH_SHORT).show()
-            } finally {
-                capturing = false
-            }
-        }
-    }
-
     // ---------- UI ----------
     var showSettings by remember { mutableStateOf(false) }
     var showSessions by remember { mutableStateOf(false) }
@@ -240,6 +273,30 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
+
+        // Rule-of-thirds grid
+        if (settings.showGrid) {
+            androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+                val lineColor = Color.White.copy(alpha = 0.35f)
+                val w = size.width
+                val h = size.height
+                for (i in 1..2) {
+                    drawLine(lineColor, Offset(w * i / 3f, 0f), Offset(w * i / 3f, h), strokeWidth = 1f)
+                    drawLine(lineColor, Offset(0f, h * i / 3f), Offset(w, h * i / 3f), strokeWidth = 1f)
+                }
+            }
+        }
+
+        // Countdown timer overlay
+        countdown?.let { t ->
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(
+                    "$t",
+                    color = Color.White,
+                    style = MaterialTheme.typography.displayLarge,
+                )
+            }
+        }
 
         // Focus ring
         focusPoint?.let { p ->
