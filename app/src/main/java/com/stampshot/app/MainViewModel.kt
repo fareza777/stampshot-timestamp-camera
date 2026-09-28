@@ -28,6 +28,9 @@ class MainViewModel(val repo: SettingsRepository) : ViewModel() {
 
     fun navigate(to: Screen) { _screen.value = to }
 
+    /** Set by CameraScreen while it owns the volume keys; returns true when the press was consumed. */
+    var volumeKeyHandler: (() -> Boolean)? = null
+
     fun setStyle(style: StampStyle) = viewModelScope.launch { repo.setStyle(style) }
     fun setShowAddress(v: Boolean) = viewModelScope.launch { repo.setShowAddress(v) }
     fun setShowGps(v: Boolean) = viewModelScope.launch { repo.setShowGps(v) }
@@ -53,4 +56,10 @@ class MainViewModel(val repo: SettingsRepository) : ViewModel() {
     fun setTouchToCapture(v: Boolean) = viewModelScope.launch { repo.setTouchToCapture(v) }
     fun setMirrorFront(v: Boolean) = viewModelScope.launch { repo.setMirrorFront(v) }
     fun setPhotoMaxDim(v: Int) = viewModelScope.launch { repo.setPhotoMaxDim(v) }
+    fun setVolumeKeysCapture(v: Boolean) = viewModelScope.launch { repo.setVolumeKeysCapture(v) }
+    fun setKeepScreenOn(v: Boolean) = viewModelScope.launch { repo.setKeepScreenOn(v) }
+    fun setShowSeconds(v: Boolean) = viewModelScope.launch { repo.setShowSeconds(v) }
+    fun setTime24h(v: Boolean) = viewModelScope.launch { repo.setTime24h(v) }
+    fun setVideoQuality(v: Int) = viewModelScope.launch { repo.setVideoQuality(v) }
+    fun setVideoAudio(v: Boolean) = viewModelScope.launch { repo.setVideoAudio(v) }
 }

@@ -17,51 +17,72 @@ data class GalleryPhoto(
     val displayName: String,
     val session: String,
     val dateAdded: Long,
+    val isVideo: Boolean = false,
 )
 
 /** Reads StampShot photos from MediaStore and decodes thumbnails without Coil. */
 class GalleryStore(private val context: Context) {
 
     suspend fun loadPhotos(): List<GalleryPhoto> = withContext(Dispatchers.IO) {
-        val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-        } else {
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-        }
+        val index = PhotoIndex(context)
+        val records = index.all().associateBy { it.displayName }
+        val photos = mutableListOf<GalleryPhoto>()
+        photos += queryCollection(imagesCollection(), "Pictures/StampShot", isVideo = false, records)
+        photos += queryCollection(videoCollection(), "Movies/StampShot", isVideo = true, records)
+        photos.sortByDescending { it.dateAdded }
+        index.prune(photos.map { it.displayName }.toSet())
+        photos
+    }
+
+    private fun imagesCollection() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+    } else {
+        MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+    }
+
+    private fun videoCollection() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+    } else {
+        MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+    }
+
+    private fun queryCollection(
+        collection: Uri,
+        relativeDir: String,
+        isVideo: Boolean,
+        records: Map<String, PhotoIndex.Record>,
+    ): List<GalleryPhoto> {
         val projection = arrayOf(
-            MediaStore.Images.Media._ID,
-            MediaStore.Images.Media.DISPLAY_NAME,
-            MediaStore.Images.Media.DATE_ADDED,
+            MediaStore.MediaColumns._ID,
+            MediaStore.MediaColumns.DISPLAY_NAME,
+            MediaStore.MediaColumns.DATE_ADDED,
         )
         val selection: String
         val args: Array<String>
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            selection = "${MediaStore.Images.Media.RELATIVE_PATH} LIKE ?"
-            args = arrayOf("Pictures/StampShot%")
+            selection = "${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?"
+            args = arrayOf("$relativeDir%")
         } else {
-            selection = "${MediaStore.Images.Media.DATA} LIKE ?"
-            args = arrayOf("%/Pictures/StampShot/%")
+            selection = "${MediaStore.MediaColumns.DATA} LIKE ?"
+            args = arrayOf("%/$relativeDir/%")
         }
-        val index = PhotoIndex(context)
-        val records = index.all().associateBy { it.displayName }
-        val photos = mutableListOf<GalleryPhoto>()
+        val out = mutableListOf<GalleryPhoto>()
         context.contentResolver.query(
             collection, projection, selection, args,
-            "${MediaStore.Images.Media.DATE_ADDED} DESC",
+            "${MediaStore.MediaColumns.DATE_ADDED} DESC",
         )?.use { c ->
-            val idCol = c.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
-            val nameCol = c.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
-            val dateCol = c.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
+            val idCol = c.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+            val nameCol = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
+            val dateCol = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED)
             while (c.moveToNext()) {
                 val id = c.getLong(idCol)
                 val name = c.getString(nameCol) ?: continue
                 val uri = ContentUris.withAppendedId(collection, id)
                 val session = records[name]?.session ?: sessionFromFileName(name)
-                photos.add(GalleryPhoto(uri, name, session, c.getLong(dateCol)))
+                out.add(GalleryPhoto(uri, name, session, c.getLong(dateCol), isVideo))
             }
         }
-        index.prune(photos.map { it.displayName }.toSet())
-        photos
+        return out
     }
 
     suspend fun loadThumbnail(uri: Uri, size: Int): Bitmap? = withContext(Dispatchers.IO) {

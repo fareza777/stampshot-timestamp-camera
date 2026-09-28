@@ -144,17 +144,8 @@ class PhotoCapture(private val context: Context) {
         return rotated
     }
 
-    private fun buildFileName(info: StampInfo): String {
-        val slug = (info.sessionName ?: "General")
-            .replace(Regex("[^A-Za-z0-9\\- ]"), "")
-            .trim()
-            .replace(Regex("\\s+"), "-")
-            .ifBlank { "General" }
-            .take(40)
-        val num = "%03d".format(info.photoNumber ?: 0)
-        val ts = StampInfo.FILE_TS_FMT.format(Date(info.timestampMillis))
-        return "StampShot_${slug}_${num}_${ts}.jpg"
-    }
+    private fun buildFileName(info: StampInfo): String =
+        stampShotFileName(info.sessionName, info.photoNumber, info.timestampMillis, "jpg")
 
     private fun saveToMediaStore(displayName: String, bitmap: Bitmap): Uri {
         val resolver = context.contentResolver

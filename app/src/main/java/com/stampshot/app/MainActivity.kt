@@ -19,6 +19,19 @@ import com.stampshot.app.ui.gallery.GalleryScreen
 
 class MainActivity : ComponentActivity() {
 
+    private var viewModelRef: MainViewModel? = null
+
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (event.action == android.view.KeyEvent.ACTION_DOWN &&
+            (event.keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP ||
+                event.keyCode == android.view.KeyEvent.KEYCODE_VOLUME_DOWN) &&
+            viewModelRef?.volumeKeyHandler?.invoke() == true
+        ) {
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -27,6 +40,7 @@ class MainActivity : ComponentActivity() {
                 val vm: MainViewModel = viewModel(factory = viewModelFactory {
                     initializer { MainViewModel(SettingsRepository(applicationContext)) }
                 })
+                viewModelRef = vm
                 val screen by vm.screen.collectAsState()
                 Surface(modifier = Modifier.fillMaxSize()) {
                     when (screen) {

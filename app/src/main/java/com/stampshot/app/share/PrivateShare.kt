@@ -39,17 +39,19 @@ object PrivateShare {
         level: PrivacyLevel,
         style: StampStyle,
         options: StampOptions = StampOptions(),
+        isVideo: Boolean = false,
     ): ShareResult = withContext(Dispatchers.IO) {
         try {
-            when (level) {
-                PrivacyLevel.FULL -> {
-                    launchShare(context, photoUri)
-                    ShareResult(launched = true)
+            when {
+                // Videos can't be re-rendered — the stamp is already burned in.
+                level == PrivacyLevel.FULL || isVideo -> {
+                    launchShare(context, photoUri, if (isVideo) "video/mp4" else "image/jpeg")
+                    ShareResult(launched = true, fellBackToPixelsOnly = isVideo && level != PrivacyLevel.FULL)
                 }
                 else -> {
                     val record = PhotoIndex(context).get(displayName)
                     val variant = renderVariant(context, photoUri, displayName, record, level, style, options)
-                    launchShare(context, variant)
+                    launchShare(context, variant, "image/jpeg")
                     ShareResult(
                         launched = true,
                         fellBackToPixelsOnly = record?.originalPath == null,
@@ -112,9 +114,9 @@ object PrivateShare {
         showGps = r.showGps,
     )
 
-    private fun launchShare(context: Context, uri: Uri) {
+    private fun launchShare(context: Context, uri: Uri, mimeType: String) {
         val send = Intent(Intent.ACTION_SEND).apply {
-            type = "image/jpeg"
+            type = mimeType
             putExtra(Intent.EXTRA_STREAM, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }

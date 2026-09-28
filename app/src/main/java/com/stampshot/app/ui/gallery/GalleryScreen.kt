@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -23,6 +24,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -72,6 +74,23 @@ fun GalleryScreen(viewModel: MainViewModel, onBack: () -> Unit) {
         }
     }
     LaunchedEffect(Unit) { refresh() }
+
+    fun openItem(photo: GalleryPhoto) {
+        if (!photo.isVideo) {
+            openPhoto = photo
+            return
+        }
+        runCatching {
+            context.startActivity(
+                android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                    setDataAndType(photo.uri, "video/mp4")
+                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                },
+            )
+        }.onFailure {
+            Toast.makeText(context, "No video player found", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     val current = openPhoto
     if (current != null) {
@@ -147,7 +166,7 @@ fun GalleryScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                             .padding(2.dp),
                     ) {
                         items(filtered, key = { it.displayName }) { photo ->
-                            PhotoCell(photo = photo, store = store) { openPhoto = photo }
+                            PhotoCell(photo = photo, store = store) { openItem(photo) }
                         }
                     }
                 }
@@ -184,6 +203,7 @@ fun GalleryScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                     val settings = viewModel.settings.value
                     val result = PrivateShare.share(
                         context, photo.uri, photo.displayName, level, settings.style,
+                        isVideo = photo.isVideo,
                         options = com.stampshot.app.stamp.StampOptions(
                             fontScale = settings.fontScale,
                             fontColorArgb = settings.fontColorArgb,
@@ -231,6 +251,14 @@ private fun PhotoCell(photo: GalleryPhoto, store: GalleryStore, onClick: () -> U
                 contentDescription = photo.displayName,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
+            )
+        }
+        if (photo.isVideo) {
+            Icon(
+                Icons.Filled.PlayCircle,
+                contentDescription = "Video",
+                tint = Color.White.copy(alpha = 0.9f),
+                modifier = Modifier.size(36.dp),
             )
         }
     }

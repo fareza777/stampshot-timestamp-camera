@@ -51,6 +51,13 @@ data class AppSettings(
     val touchToCapture: Boolean = false,
     val mirrorFront: Boolean = true,
     val photoMaxDim: Int = 0,
+    val volumeKeysCapture: Boolean = true,
+    val keepScreenOn: Boolean = true,
+    val showSeconds: Boolean = true,
+    val time24h: Boolean = true,
+    // Video
+    val videoQuality: Int = VIDEO_HD,
+    val videoAudio: Boolean = true,
 ) {
     fun nextNumber(): Int = (counters[currentSession] ?: 0) + 1
 
@@ -59,6 +66,10 @@ data class AppSettings(
         const val FLASH_OFF = 0
         const val FLASH_ON = 1
         const val FLASH_AUTO = 2
+        const val VIDEO_SD = 0
+        const val VIDEO_HD = 1
+        const val VIDEO_FHD = 2
+        val VIDEO_QUALITY_OPTIONS = listOf(VIDEO_SD to "480p", VIDEO_HD to "720p", VIDEO_FHD to "1080p")
         val FONT_SCALE_OPTIONS = listOf(0.75f to "Small", 1f to "Medium", 1.3f to "Large")
         val TIMER_OPTIONS = listOf(0 to "Off", 3 to "3s", 5 to "5s", 10 to "10s")
         val RES_OPTIONS = listOf(0 to "Original", 1600 to "1600px", 1200 to "1200px")
@@ -109,6 +120,12 @@ class SettingsRepository(private val context: Context) {
         val TOUCH_CAPTURE = booleanPreferencesKey("touch_capture")
         val MIRROR_FRONT = booleanPreferencesKey("mirror_front")
         val PHOTO_MAX_DIM = intPreferencesKey("photo_max_dim")
+        val VOLUME_KEYS = booleanPreferencesKey("volume_keys_capture")
+        val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
+        val SHOW_SECONDS = booleanPreferencesKey("show_seconds")
+        val TIME_24H = booleanPreferencesKey("time_24h")
+        val VIDEO_QUALITY = intPreferencesKey("video_quality")
+        val VIDEO_AUDIO = booleanPreferencesKey("video_audio")
     }
 
     val settings: Flow<AppSettings> = context.settingsStore.data.map { p ->
@@ -146,6 +163,12 @@ class SettingsRepository(private val context: Context) {
             touchToCapture = p[K.TOUCH_CAPTURE] ?: false,
             mirrorFront = p[K.MIRROR_FRONT] ?: true,
             photoMaxDim = p[K.PHOTO_MAX_DIM] ?: 0,
+            volumeKeysCapture = p[K.VOLUME_KEYS] ?: true,
+            keepScreenOn = p[K.KEEP_SCREEN_ON] ?: true,
+            showSeconds = p[K.SHOW_SECONDS] ?: true,
+            time24h = p[K.TIME_24H] ?: true,
+            videoQuality = p[K.VIDEO_QUALITY] ?: AppSettings.VIDEO_HD,
+            videoAudio = p[K.VIDEO_AUDIO] ?: true,
         )
     }
 
@@ -175,6 +198,12 @@ class SettingsRepository(private val context: Context) {
     suspend fun setTouchToCapture(v: Boolean) = put(K.TOUCH_CAPTURE, v)
     suspend fun setMirrorFront(v: Boolean) = put(K.MIRROR_FRONT, v)
     suspend fun setPhotoMaxDim(v: Int) = put(K.PHOTO_MAX_DIM, v)
+    suspend fun setVolumeKeysCapture(v: Boolean) = put(K.VOLUME_KEYS, v)
+    suspend fun setKeepScreenOn(v: Boolean) = put(K.KEEP_SCREEN_ON, v)
+    suspend fun setShowSeconds(v: Boolean) = put(K.SHOW_SECONDS, v)
+    suspend fun setTime24h(v: Boolean) = put(K.TIME_24H, v)
+    suspend fun setVideoQuality(v: Int) = put(K.VIDEO_QUALITY, v)
+    suspend fun setVideoAudio(v: Boolean) = put(K.VIDEO_AUDIO, v)
 
     suspend fun setSession(name: String) {
         val clean = name.trim().ifBlank { AppSettings.DEFAULT_SESSION }

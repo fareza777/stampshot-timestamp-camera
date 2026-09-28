@@ -66,10 +66,19 @@ data class StampInfo(
     val showNumber: Boolean = true,
     val dateFormat: DateFormatOption = DateFormatOption.DAY_MONTH_YEAR,
     val gpsFormat: GpsFormat = GpsFormat.DECIMAL,
+    val showSeconds: Boolean = true,
+    val time24h: Boolean = true,
 ) {
     fun date(): String = SimpleDateFormat(dateFormat.pattern, Locale.getDefault()).format(Date(timestampMillis))
 
-    fun time(): String = TIME_FMT.format(Date(timestampMillis))
+    fun time(): String {
+        val pattern = buildString {
+            append(if (time24h) "HH:mm" else "hh:mm")
+            if (showSeconds) append(":ss")
+            if (!time24h) append(" a")
+        }
+        return SimpleDateFormat(pattern, Locale.getDefault()).format(Date(timestampMillis))
+    }
 
     fun dateTime(): String = "${date()} · ${time()}"
 
@@ -135,7 +144,6 @@ data class StampInfo(
         (showAddress && !address.isNullOrBlank()) || (showGps && latitude != null)
 
     companion object {
-        private val TIME_FMT = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
         val FILE_TS_FMT = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
         val EXIF_FMT = SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US)
     }

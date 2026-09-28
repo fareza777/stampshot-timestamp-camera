@@ -15,9 +15,13 @@ import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.video.Recorder
+import androidx.camera.video.Recording
+import androidx.camera.video.VideoCapture
 import androidx.camera.view.PreviewView
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -68,15 +72,31 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import com.stampshot.app.MainViewModel
 import com.stampshot.app.capture.PhotoCapture
+import com.stampshot.app.capture.VideoRecorder
+import com.stampshot.app.capture.VideoStampProcessor
 import com.stampshot.app.data.AppSettings
 import com.stampshot.app.location.LocationStamper
 import com.stampshot.app.stamp.StampInfo
 import com.stampshot.app.stamp.StampOptions
 import com.stampshot.app.stamp.StampStyle
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.guava.await
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
+
+private enum class CaptureMode(val label: String) { PHOTO("Photo"), VIDEO("Video") }
+
+private fun stampOptionsOf(s: AppSettings) = StampOptions(
+    fontScale = s.fontScale,
+    fontColorArgb = s.fontColorArgb,
+    bgColorArgb = s.bgColorArgb,
+    textOpacity = s.textOpacity,
+    bgOpacity = s.bgOpacity,
+    position = s.stampPosition,
+    font = s.stampFont,
+)
 
 @SuppressLint("ClickableViewAccessibility")
 @Composable
@@ -98,6 +118,10 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
         cameraGranted = grants[Manifest.permission.CAMERA] == true
     }
 
+    val audioLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { }
+
     LaunchedEffect(Unit) {
         if (!cameraGranted) {
             val perms = buildList {
@@ -110,6 +134,17 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
         }
     }
 
+    // Keep the screen on while the camera is open, when enabled.
+    val activity = context as? android.app.Activity
+    androidx.compose.runtime.DisposableEffect(settings.keepScreenOn) {
+        if (settings.keepScreenOn) {
+            activity?.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+        onDispose { activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
+    }
+
     if (!cameraGranted) {
         PermissionGate(onRequest = { permissionLauncher.launch(arrayOf(Manifest.permission.CAMERA)) })
         return
@@ -119,10 +154,12 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
     val previewView = remember { PreviewView(context).apply { scaleType = PreviewView.ScaleType.FILL_CENTER } }
     var camera by remember { mutableStateOf<Camera?>(null) }
     var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
+    var videoCapture by remember { mutableStateOf<VideoCapture<Recorder>?>(null) }
     var zoomRatio by remember { mutableFloatStateOf(1f) }
     var zoomRange by remember { mutableStateOf(0.5f..10f) }
+    val videoRecorder = remember { VideoRecorder(context) }
 
-    LaunchedEffect(settings.lensFacingBack, settings.flashMode) {
+    LaunchedEffect(settings.lensFacingBack, settings.flashMode, settings.videoQuality) {
         val provider = ProcessCameraProvider.getInstance(context).await()
         val preview = Preview.Builder().build().also {
             it.setSurfaceProvider(previewView.surfaceProvider)
@@ -137,6 +174,7 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
                 },
             )
             .build()
+        val video = videoRecorder.buildUseCase(settings.videoQuality)
         val selector = CameraSelector.Builder()
             .requireLensFacing(
                 if (settings.lensFacingBack) CameraSelector.LENS_FACING_BACK
@@ -145,8 +183,9 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
             .build()
         try {
             provider.unbindAll()
-            camera = provider.bindToLifecycle(lifecycleOwner, selector, preview, capture)
+            camera = provider.bindToLifecycle(lifecycleOwner, selector, preview, capture, video)
             imageCapture = capture
+            videoCapture = video
             camera?.cameraInfo?.zoomState?.observe(lifecycleOwner) { zs ->
                 zoomRange = zs.minZoomRatio..zs.maxZoomRatio
                 zoomRatio = zs.zoomRatio
@@ -156,12 +195,63 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
         }
     }
 
+    var mode by remember { mutableStateOf(CaptureMode.PHOTO) }
+    var recording by remember { mutableStateOf<Recording?>(null) }
+    var recElapsedSecs by remember { mutableStateOf(0) }
+
+    // Elapsed-time ticker while recording.
+    LaunchedEffect(recording != null) {
+        if (recording != null) {
+            val start = System.currentTimeMillis()
+            while (true) {
+                recElapsedSecs = ((System.currentTimeMillis() - start) / 1000).toInt()
+                delay(500)
+            }
+        } else {
+            recElapsedSecs = 0
+        }
+    }
+
+    // Ask for mic access once when video mode is entered with audio on.
+    LaunchedEffect(mode) {
+        if (mode == CaptureMode.VIDEO && settings.videoAudio &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            audioLauncher.launch(arrayOf(Manifest.permission.RECORD_AUDIO))
+        }
+    }
+
     // ---------- Capture ----------
     var capturing by remember { mutableStateOf(false) }
     var flash by remember { mutableStateOf(false) }
     var countdown by remember { mutableStateOf<Int?>(null) }
     val executor = remember { ContextCompat.getMainExecutor(context) }
     val shutterFx = remember { android.media.MediaActionSound() }
+
+    suspend fun stampInfoFor(s: AppSettings): StampInfo {
+        val number = viewModel.repo.nextNumber(s.currentSession)
+        val loc = if ((s.showAddress || s.showGps) && LocationStamper.hasPermission(context)) {
+            LocationStamper.snapshot(context)
+        } else null
+        return StampInfo(
+            timestampMillis = System.currentTimeMillis(),
+            sessionName = s.currentSession,
+            photoNumber = number,
+            note = s.note.ifBlank { null },
+            address = loc?.address,
+            city = loc?.city,
+            latitude = loc?.location?.latitude,
+            longitude = loc?.location?.longitude,
+            showAddress = s.showAddress,
+            showGps = s.showGps,
+            showNumber = s.showNumber,
+            dateFormat = s.dateFormat,
+            gpsFormat = s.gpsFormat,
+            showSeconds = s.showSeconds,
+            time24h = s.time24h,
+        )
+    }
 
     fun shoot() {
         val ic = imageCapture ?: return
@@ -179,37 +269,10 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
                 }
                 flash = true
                 if (s.shutterSound) shutterFx.play(android.media.MediaActionSound.SHUTTER_CLICK)
-                val number = viewModel.repo.nextNumber(s.currentSession)
-                val loc = if ((s.showAddress || s.showGps) && LocationStamper.hasPermission(context)) {
-                    LocationStamper.snapshot(context)
-                } else null
-                val info = StampInfo(
-                    timestampMillis = System.currentTimeMillis(),
-                    sessionName = s.currentSession,
-                    photoNumber = number,
-                    note = s.note.ifBlank { null },
-                    address = loc?.address,
-                    city = loc?.city,
-                    latitude = loc?.location?.latitude,
-                    longitude = loc?.location?.longitude,
-                    showAddress = s.showAddress,
-                    showGps = s.showGps,
-                    showNumber = s.showNumber,
-                    dateFormat = s.dateFormat,
-                    gpsFormat = s.gpsFormat,
-                )
-                val opts = StampOptions(
-                    fontScale = s.fontScale,
-                    fontColorArgb = s.fontColorArgb,
-                    bgColorArgb = s.bgColorArgb,
-                    textOpacity = s.textOpacity,
-                    bgOpacity = s.bgOpacity,
-                    position = s.stampPosition,
-                    font = s.stampFont,
-                )
+                val info = stampInfoFor(s)
                 val saved = PhotoCapture(context).capture(
                     ic, executor, info, s.style, s.keepOriginals,
-                    options = opts,
+                    options = stampOptionsOf(s),
                     mirror = s.mirrorFront && !s.lensFacingBack,
                     maxDim = s.photoMaxDim,
                 )
@@ -220,6 +283,93 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
                 capturing = false
                 countdown = null
             }
+        }
+    }
+
+    var processingVideo by remember { mutableStateOf(false) }
+
+    fun toggleRecording() {
+        val active = recording
+        if (active != null) {
+            active.stop()
+            return
+        }
+        val vc = videoCapture ?: return
+        if (capturing) return
+        capturing = true
+        scope.launch {
+            try {
+                val s = viewModel.repo.current()
+                if (s.timerSecs > 0) {
+                    for (t in s.timerSecs downTo 1) {
+                        countdown = t
+                        delay(1000)
+                    }
+                    countdown = null
+                }
+                val info = stampInfoFor(s)
+                val withAudio = s.videoAudio &&
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                    PackageManager.PERMISSION_GRANTED
+                recording = videoRecorder.start(vc, withAudio, executor) { result ->
+                    recording = null
+                    val raw = result.rawFile
+                    if (raw == null) {
+                        Toast.makeText(
+                            context, "Recording failed${result.error?.let { " ($it)" } ?: ""}",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                        return@start
+                    }
+                    processingVideo = true
+                    scope.launch {
+                        var outFile: java.io.File? = null
+                        try {
+                            outFile = withContext(Dispatchers.Default) {
+                                VideoStampProcessor.stamp(raw, info, s.style, stampOptionsOf(s))
+                            }
+                            videoRecorder.publish(outFile, info)
+                            Toast.makeText(
+                                context, "Saved video #%03d".format(info.photoNumber ?: 0),
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        } catch (e: Exception) {
+                            // Stamping failed — still save the raw clip rather than lose it.
+                            runCatching { videoRecorder.publish(raw, info) }
+                            Toast.makeText(
+                                context, "Saved video (stamp failed: ${e.message})", Toast.LENGTH_SHORT,
+                            ).show()
+                        } finally {
+                            raw.delete()
+                            outFile?.delete()
+                            processingVideo = false
+                        }
+                    }
+                }
+                if (!withAudio && s.videoAudio) {
+                    Toast.makeText(context, "Recording without audio — mic permission not granted", Toast.LENGTH_SHORT).show()
+                }
+                flash = true
+                if (s.shutterSound) shutterFx.play(android.media.MediaActionSound.SHUTTER_CLICK)
+            } catch (e: Exception) {
+                recording = null
+                Toast.makeText(context, "Recording failed: ${e.message}", Toast.LENGTH_SHORT).show()
+            } finally {
+                capturing = false
+                countdown = null
+            }
+        }
+    }
+
+    fun onShutter() = when (mode) {
+        CaptureMode.PHOTO -> shoot()
+        CaptureMode.VIDEO -> toggleRecording()
+    }
+
+    // Volume keys act as shutter when enabled.
+    androidx.compose.runtime.SideEffect {
+        viewModel.volumeKeyHandler = {
+            if (settings.volumeKeysCapture) { onShutter(); true } else false
         }
     }
 
@@ -324,6 +474,32 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
             Box(Modifier.fillMaxSize().alpha(flashAlpha).background(Color.White))
         }
 
+        // Recording indicator
+        if (recording != null) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .statusBarsPadding()
+                    .padding(start = 12.dp, top = 52.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0x99000000))
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFE53935)),
+                )
+                Text(
+                    "  %02d:%02d".format(recElapsedSecs / 60, recElapsedSecs % 60),
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+        }
+
         // Top controls
         Row(
             modifier = Modifier
@@ -369,9 +545,33 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
                 .padding(bottom = 18.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            // Photo / Video mode toggle
+            Surface(
+                color = Color(0x66000000),
+                shape = RoundedCornerShape(20.dp),
+            ) {
+                Row {
+                    CaptureMode.values().forEach { m ->
+                        val selected = mode == m
+                        Text(
+                            m.label,
+                            color = if (selected) Color.Black else Color.White,
+                            style = MaterialTheme.typography.labelLarge,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(if (selected) Color.White else Color.Transparent)
+                                .clickable(enabled = recording == null) {
+                                    mode = if (m == CaptureMode.PHOTO) CaptureMode.PHOTO else CaptureMode.VIDEO
+                                }
+                                .padding(horizontal = 18.dp, vertical = 8.dp),
+                        )
+                    }
+                }
+            }
             SessionChip(
                 label = "${settings.currentSession} · #%03d".format(settings.nextNumber()),
-                onClick = { showSessions = true },
+                onClick = { if (recording == null) showSessions = true },
+                modifier = Modifier.padding(top = 10.dp),
             )
             Row(
                 modifier = Modifier
@@ -381,16 +581,40 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
                 horizontalArrangement = Arrangement.SpaceEvenly,
             ) {
                 Box(modifier = Modifier.size(64.dp))
-                ShutterButton(capturing = capturing, onClick = { shoot() })
+                ShutterButton(
+                    capturing = capturing,
+                    recording = recording != null,
+                    videoMode = mode == CaptureMode.VIDEO,
+                    onClick = { onShutter() },
+                )
                 IconButton(
-                    onClick = { viewModel.setLensFacingBack(!settings.lensFacingBack) },
+                    onClick = { if (recording == null) viewModel.setLensFacingBack(!settings.lensFacingBack) },
                     modifier = Modifier
                         .size(56.dp)
                         .clip(CircleShape)
-                        .background(Color(0x66000000)),
+                        .background(Color(0x66000000))
+                        .alpha(if (recording == null) 1f else 0.4f),
                 ) {
                     Icon(Icons.Filled.Cameraswitch, contentDescription = "Switch camera", tint = Color.White)
                 }
+            }
+        }
+
+        if (processingVideo) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xB3000000))
+                    .padding(horizontal = 18.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                Text(
+                    "  Saving video…",
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
             }
         }
 
@@ -426,11 +650,12 @@ private fun ZoomBadge(ratio: Float) {
 }
 
 @Composable
-private fun SessionChip(label: String, onClick: () -> Unit) {
+private fun SessionChip(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Surface(
         onClick = onClick,
         color = Color(0x66000000),
         shape = RoundedCornerShape(20.dp),
+        modifier = modifier,
     ) {
         Text(
             text = label,
@@ -442,12 +667,13 @@ private fun SessionChip(label: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun ShutterButton(capturing: Boolean, onClick: () -> Unit) {
+private fun ShutterButton(capturing: Boolean, recording: Boolean = false, videoMode: Boolean = false, onClick: () -> Unit) {
+    val ringColor = if (videoMode) Color(0xFFE53935) else Color.White
     Box(
         modifier = Modifier
             .size(88.dp)
             .clip(CircleShape)
-            .background(Color.White.copy(alpha = 0.35f)),
+            .background(ringColor.copy(alpha = 0.35f)),
         contentAlignment = Alignment.Center,
     ) {
         Surface(
@@ -457,6 +683,14 @@ private fun ShutterButton(capturing: Boolean, onClick: () -> Unit) {
             shape = CircleShape,
             color = Color.White,
         ) {}
+        if (videoMode) {
+            Box(
+                modifier = Modifier
+                    .size(if (recording) 26.dp else 52.dp)
+                    .clip(if (recording) RoundedCornerShape(6.dp) else CircleShape)
+                    .background(Color(0xFFE53935)),
+            )
+        }
     }
 }
 

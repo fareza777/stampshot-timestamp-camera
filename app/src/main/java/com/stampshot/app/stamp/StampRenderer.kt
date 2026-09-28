@@ -65,6 +65,32 @@ object StampRenderer {
         }
     }
 
+    /**
+     * Renders just the stamp (no photo) into a transparent bitmap of [w]x[h] —
+     * the video pipeline blends this onto decoded YUV frames.
+     */
+    fun renderOverlayBitmap(w: Int, h: Int, info: StampInfo, style: StampStyle, opts: StampOptions = StampOptions()): Bitmap {
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        drawOnFrame(Canvas(bmp), w, h, info, style, opts)
+        return bmp
+    }
+
+    /**
+     * Draws the stamp overlay onto an existing frame canvas — used per-frame for
+     * video via CameraEffect. No luminance sampling (no bitmap to sample): uses
+     * the dark-scene theme, which stays readable since the scrim is preserved.
+     * BOTTOM_INFO_STRIP can't extend the frame, so it renders as the same
+     * full-width info strip overlaid on the bottom edge.
+     */
+    fun drawOnFrame(c: Canvas, w: Int, h: Int, info: StampInfo, style: StampStyle, opts: StampOptions = StampOptions()) {
+        val theme = Theme(darkScene = true, opts)
+        when (style) {
+            StampStyle.MINIMAL_CORNER -> drawMinimalCorner(c, w, h, info, theme, opts)
+            StampStyle.WORK_PROOF -> drawWorkProof(c, w, h, info, theme, opts)
+            StampStyle.CLEAN_BOTTOM_BAR, StampStyle.BOTTOM_INFO_STRIP -> drawBottomBar(c, w, h, info, theme, opts)
+        }
+    }
+
     private inline fun renderOnImage(
         source: Bitmap,
         info: StampInfo,

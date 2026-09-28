@@ -6,12 +6,12 @@ plugins {
 
 android {
     namespace = "com.stampshot.app"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.stampshot.app"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"
     }
@@ -62,6 +62,7 @@ dependencies {
     implementation(libs.camerax.camera2)
     implementation(libs.camerax.lifecycle)
     implementation(libs.camerax.view)
+    implementation(libs.camerax.video)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.exifinterface)
     implementation(libs.kotlinx.coroutines.android)

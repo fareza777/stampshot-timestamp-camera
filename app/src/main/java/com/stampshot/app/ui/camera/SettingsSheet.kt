@@ -177,6 +177,12 @@ fun SettingsSheet(viewModel: MainViewModel, onDismiss: () -> Unit) {
                 options = DateFormatOption.entries.map { it to it.label },
                 selected = settings.dateFormat,
             ) { viewModel.setDateFormat(it) }
+            ToggleRow(title = "Show seconds", checked = settings.showSeconds) {
+                viewModel.setShowSeconds(it)
+            }
+            ToggleRow(title = "24-hour clock", checked = settings.time24h) {
+                viewModel.setTime24h(it)
+            }
             OutlinedTextField(
                 value = settings.note,
                 onValueChange = { viewModel.setNote(it) },
@@ -206,6 +212,16 @@ fun SettingsSheet(viewModel: MainViewModel, onDismiss: () -> Unit) {
                 subtitle = "Flip front-camera photos so text looks natural",
                 checked = settings.mirrorFront,
             ) { viewModel.setMirrorFront(it) }
+            ToggleRow(
+                title = "Volume keys capture",
+                subtitle = "Use volume buttons as the shutter",
+                checked = settings.volumeKeysCapture,
+            ) { viewModel.setVolumeKeysCapture(it) }
+            ToggleRow(
+                title = "Keep screen on",
+                subtitle = "Prevent the screen from sleeping while the camera is open",
+                checked = settings.keepScreenOn,
+            ) { viewModel.setKeepScreenOn(it) }
             ChipRow(
                 label = "Timer",
                 options = AppSettings.TIMER_OPTIONS,
@@ -216,6 +232,19 @@ fun SettingsSheet(viewModel: MainViewModel, onDismiss: () -> Unit) {
                 options = AppSettings.RES_OPTIONS,
                 selected = settings.photoMaxDim,
             ) { viewModel.setPhotoMaxDim(it) }
+
+            // ---------- Video ----------
+            SectionHeader("Video")
+            ChipRow(
+                label = "Video quality",
+                options = AppSettings.VIDEO_QUALITY_OPTIONS,
+                selected = settings.videoQuality,
+            ) { viewModel.setVideoQuality(it) }
+            ToggleRow(
+                title = "Microphone",
+                subtitle = "Record audio with video",
+                checked = settings.videoAudio,
+            ) { viewModel.setVideoAudio(it) }
 
             // ---------- Storage & sharing ----------
             SectionHeader("Storage & sharing")

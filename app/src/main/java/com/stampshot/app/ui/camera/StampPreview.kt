@@ -116,8 +116,13 @@ fun StampPreview(
     }
     val scale = s.fontScale
 
+    val timePattern = buildString {
+        append(if (s.time24h) "HH:mm" else "hh:mm")
+        if (s.showSeconds) append(":ss")
+        if (!s.time24h) append(" a")
+    }
     val date = SimpleDateFormat(s.dateFormat.pattern, Locale.getDefault()).format(Date(now))
-    val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(now))
+    val time = SimpleDateFormat(timePattern, Locale.getDefault()).format(Date(now))
     val sessionLine = if (s.showNumber) "${s.currentSession} · #%03d".format(s.nextNumber()) else s.currentSession
     val lines = buildList {
         add("$date · $time")
