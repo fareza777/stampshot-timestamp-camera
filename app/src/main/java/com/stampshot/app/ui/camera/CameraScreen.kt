@@ -96,6 +96,7 @@ private fun stampOptionsOf(s: AppSettings) = StampOptions(
     bgOpacity = s.bgOpacity,
     position = s.stampPosition,
     font = s.stampFont,
+    align = s.stampAlign,
 )
 
 @SuppressLint("ClickableViewAccessibility")
@@ -239,6 +240,8 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
             sessionName = s.currentSession,
             photoNumber = number,
             note = s.note.ifBlank { null },
+            activity = s.activity.ifBlank { null },
+            personName = s.personName.ifBlank { null },
             address = loc?.address,
             city = loc?.city,
             latitude = loc?.location?.latitude,
@@ -421,7 +424,45 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
     val flashAlpha by animateFloatAsState(if (flash) 0.85f else 0f, label = "captureFlash")
     LaunchedEffect(flash) { if (flash) { delay(80); flash = false } }
 
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+    Column(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+
+        // Top bar — solid strip above the preview, clear of the status bar.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = {
+                viewModel.setFlashMode((settings.flashMode + 1) % 3)
+            }) {
+                Icon(
+                    imageVector = when (settings.flashMode) {
+                        AppSettings.FLASH_ON -> Icons.Filled.FlashOn
+                        AppSettings.FLASH_AUTO -> Icons.Filled.FlashAuto
+                        else -> Icons.Filled.FlashOff
+                    },
+                    contentDescription = "Flash mode",
+                    tint = Color.White,
+                )
+            }
+            ZoomBadge(zoomRatio)
+            Row(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                IconButton(onClick = onOpenGallery) {
+                    Icon(Icons.Filled.PhotoLibrary, contentDescription = "Gallery", tint = Color.White)
+                }
+                IconButton(onClick = { showSettings = true }) {
+                    Icon(Icons.Filled.Settings, contentDescription = "Settings", tint = Color.White)
+                }
+            }
+        }
+
+        // Preview area — everything between the app bars never overlaps system UI.
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
         AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
 
         // Rule-of-thirds grid
@@ -479,8 +520,7 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
             Row(
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .statusBarsPadding()
-                    .padding(start = 12.dp, top = 52.dp)
+                    .padding(start = 12.dp, top = 12.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(Color(0x99000000))
                     .padding(horizontal = 10.dp, vertical = 6.dp),
@@ -500,49 +540,39 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
             }
         }
 
-        // Top controls
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(horizontal = 8.dp, vertical = 4.dp)
-                .align(Alignment.TopCenter),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = {
-                viewModel.setFlashMode((settings.flashMode + 1) % 3)
-            }) {
-                Icon(
-                    imageVector = when (settings.flashMode) {
-                        AppSettings.FLASH_ON -> Icons.Filled.FlashOn
-                        AppSettings.FLASH_AUTO -> Icons.Filled.FlashAuto
-                        else -> Icons.Filled.FlashOff
-                    },
-                    contentDescription = "Flash mode",
-                    tint = Color.White,
-                )
-            }
-            ZoomBadge(zoomRatio)
+        if (processingVideo) {
             Row(
-                modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.End,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xB3000000))
+                    .padding(horizontal = 18.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(onClick = onOpenGallery) {
-                    Icon(Icons.Filled.PhotoLibrary, contentDescription = "Gallery", tint = Color.White)
-                }
-                IconButton(onClick = { showSettings = true }) {
-                    Icon(Icons.Filled.Settings, contentDescription = "Settings", tint = Color.White)
-                }
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                Text(
+                    "  Saving video…",
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
             }
         }
 
-        // Bottom controls
+        if (capturing) {
+            CircularProgressIndicator(
+                modifier = Modifier.align(Alignment.Center).size(56.dp),
+                color = Color.White,
+            )
+        }
+
+        }
+
+        // Bottom control bar — solid strip clear of the navigation bar.
         Column(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(bottom = 18.dp),
+                .padding(bottom = 12.dp, top = 6.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             // Photo / Video mode toggle
@@ -600,30 +630,6 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
             }
         }
 
-        if (processingVideo) {
-            Row(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(Color(0xB3000000))
-                    .padding(horizontal = 18.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                Text(
-                    "  Saving video…",
-                    color = Color.White,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-        }
-
-        if (capturing) {
-            CircularProgressIndicator(
-                modifier = Modifier.align(Alignment.Center).size(56.dp),
-                color = Color.White,
-            )
-        }
     }
 
     if (showSettings) {

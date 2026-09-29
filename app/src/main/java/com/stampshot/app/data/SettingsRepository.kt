@@ -10,6 +10,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.stampshot.app.stamp.DateFormatOption
 import com.stampshot.app.stamp.GpsFormat
 import com.stampshot.app.stamp.PrivacyLevel
+import com.stampshot.app.stamp.StampAlign
 import com.stampshot.app.stamp.StampFont
 import com.stampshot.app.stamp.StampPosition
 import com.stampshot.app.stamp.StampStyle
@@ -41,6 +42,9 @@ data class AppSettings(
     val bgOpacity: Float = 0.62f,
     val stampPosition: StampPosition = StampPosition.BOTTOM_LEFT,
     val stampFont: StampFont = StampFont.DEFAULT,
+    val stampAlign: StampAlign = StampAlign.LEFT,
+    val activity: String = "",
+    val personName: String = "",
     val dateFormat: DateFormatOption = DateFormatOption.DAY_MONTH_YEAR,
     val gpsFormat: GpsFormat = GpsFormat.DECIMAL,
     val showNumber: Boolean = true,
@@ -111,6 +115,9 @@ class SettingsRepository(private val context: Context) {
         val BG_OPACITY = floatPreferencesKey("bg_opacity")
         val POSITION = stringPreferencesKey("stamp_position")
         val FONT = stringPreferencesKey("stamp_font")
+        val ALIGN = stringPreferencesKey("stamp_align")
+        val ACTIVITY = stringPreferencesKey("activity")
+        val PERSON_NAME = stringPreferencesKey("person_name")
         val DATE_FORMAT = stringPreferencesKey("date_format")
         val GPS_FORMAT = stringPreferencesKey("gps_format")
         val SHOW_NUMBER = booleanPreferencesKey("show_number")
@@ -152,6 +159,10 @@ class SettingsRepository(private val context: Context) {
                 ?: StampPosition.BOTTOM_LEFT,
             stampFont = p[K.FONT]?.let { runCatching { StampFont.valueOf(it) }.getOrNull() }
                 ?: StampFont.DEFAULT,
+            stampAlign = p[K.ALIGN]?.let { runCatching { StampAlign.valueOf(it) }.getOrNull() }
+                ?: StampAlign.LEFT,
+            activity = p[K.ACTIVITY] ?: "",
+            personName = p[K.PERSON_NAME] ?: "",
             dateFormat = p[K.DATE_FORMAT]?.let { runCatching { DateFormatOption.valueOf(it) }.getOrNull() }
                 ?: DateFormatOption.DAY_MONTH_YEAR,
             gpsFormat = p[K.GPS_FORMAT]?.let { runCatching { GpsFormat.valueOf(it) }.getOrNull() }
@@ -189,6 +200,9 @@ class SettingsRepository(private val context: Context) {
     suspend fun setBgOpacity(v: Float) = put(K.BG_OPACITY, v.coerceIn(0f, 1f))
     suspend fun setStampPosition(v: StampPosition) = put(K.POSITION, v.name)
     suspend fun setStampFont(v: StampFont) = put(K.FONT, v.name)
+    suspend fun setStampAlign(v: StampAlign) = put(K.ALIGN, v.name)
+    suspend fun setActivity(v: String) = put(K.ACTIVITY, v.trim())
+    suspend fun setPersonName(v: String) = put(K.PERSON_NAME, v.trim())
     suspend fun setDateFormat(v: DateFormatOption) = put(K.DATE_FORMAT, v.name)
     suspend fun setGpsFormat(v: GpsFormat) = put(K.GPS_FORMAT, v.name)
     suspend fun setShowNumber(v: Boolean) = put(K.SHOW_NUMBER, v)

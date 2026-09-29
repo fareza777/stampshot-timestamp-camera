@@ -23,6 +23,10 @@ enum class StampFont(val label: String) {
     DEFAULT("Sans"), SERIF("Serif"), MONO("Mono"),
 }
 
+enum class StampAlign(val label: String) {
+    LEFT("Left"), RIGHT("Right"),
+}
+
 enum class DateFormatOption(val label: String, val pattern: String) {
     DAY_MONTH_YEAR("28 Sep 2026", "dd MMM yyyy"),
     WEEKDAY_FULL("Sunday, 28 September 2026", "EEEE, dd MMMM yyyy"),
@@ -44,6 +48,7 @@ data class StampOptions(
     val bgOpacity: Float = 0.62f,
     val position: StampPosition = StampPosition.BOTTOM_LEFT,
     val font: StampFont = StampFont.DEFAULT,
+    val align: StampAlign = StampAlign.LEFT,
 )
 
 enum class PrivacyLevel(val label: String, val description: String) {
@@ -57,6 +62,8 @@ data class StampInfo(
     val sessionName: String? = null,
     val photoNumber: Int? = null,
     val note: String? = null,
+    val activity: String? = null,
+    val personName: String? = null,
     val address: String? = null,
     val city: String? = null,
     val latitude: Double? = null,
@@ -115,10 +122,16 @@ data class StampInfo(
 
     fun noteLine(): String? = note?.takeIf { it.isNotBlank() }
 
+    fun activityLine(): String? = activity?.takeIf { it.isNotBlank() }?.let { "Activity: $it" }
+
+    fun personLine(): String? = personName?.takeIf { it.isNotBlank() }?.let { "Name: $it" }
+
     /** All visible lines in display order. */
     fun lines(): List<String> = buildList {
         add(dateTime())
         sessionLine()?.let { add(it) }
+        activityLine()?.let { add(it) }
+        personLine()?.let { add(it) }
         addressLine()?.let { add(it) }
         gpsLine()?.let { add(it) }
         noteLine()?.let { add(it) }

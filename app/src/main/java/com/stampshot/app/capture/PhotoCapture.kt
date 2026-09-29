@@ -96,6 +96,8 @@ class PhotoCapture(private val context: Context) {
                     address = info.address,
                     city = info.city,
                     note = info.note,
+                    activity = info.activity,
+                    personName = info.personName,
                     showAddress = info.showAddress,
                     showGps = info.showGps,
                 ),

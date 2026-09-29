@@ -106,6 +106,8 @@ object PrivateShare {
         sessionName = r.session,
         photoNumber = r.number,
         note = r.note,
+        activity = r.activity,
+        personName = r.personName,
         address = r.address,
         city = r.city,
         latitude = r.latitude,

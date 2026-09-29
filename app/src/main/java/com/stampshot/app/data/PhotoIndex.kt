@@ -26,6 +26,8 @@ class PhotoIndex(private val context: Context) {
         val address: String?,
         val city: String?,
         val note: String?,
+        val activity: String?,
+        val personName: String?,
         val showAddress: Boolean,
         val showGps: Boolean,
     )
@@ -93,6 +95,8 @@ class PhotoIndex(private val context: Context) {
         if (address != null) put("address", address)
         if (city != null) put("city", city)
         if (note != null) put("note", note)
+        if (activity != null) put("activity", activity)
+        if (personName != null) put("personName", personName)
         put("showAddress", showAddress)
         put("showGps", showGps)
     }
@@ -108,6 +112,8 @@ class PhotoIndex(private val context: Context) {
         address = if (isNull("address")) null else getString("address"),
         city = if (isNull("city")) null else getString("city"),
         note = if (isNull("note")) null else getString("note"),
+        activity = if (isNull("activity")) null else getString("activity"),
+        personName = if (isNull("personName")) null else getString("personName"),
         showAddress = optBoolean("showAddress", true),
         showGps = optBoolean("showGps", false),
     )

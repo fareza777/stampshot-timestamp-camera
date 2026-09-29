@@ -138,8 +138,12 @@ object StampRenderer {
         val primary = textPaint(wf * 0.036f * s, theme.text, bold = true, font = opts.font)
         val secondary = textPaint(wf * 0.030f * s, theme.textDim, font = opts.font)
 
-        val lines = info.lines()
-        val textW = lines.maxOf { primary.measureText(it) }
+        val maxTextW = wf * 0.86f - padH * 2
+        val lines = info.lines().flatMapIndexed { i, line ->
+            val p = if (i == 0) primary else secondary
+            wrap(p, line, maxTextW, 2).map { it to p }
+        }
+        val textW = lines.maxOf { (t, p) -> p.measureText(t) }
         val lineH = lineHeight(primary)
         val gap = lineH * 0.22f
 
@@ -150,10 +154,11 @@ object StampRenderer {
 
         c.drawRoundRect(RectF(left, top, left + boxW, top + boxH), radius, radius, fillPaint(theme.scrim))
 
+        val rightAlign = opts.align == StampAlign.RIGHT
         var baseline = top + padV - primary.ascent()
-        lines.forEachIndexed { i, line ->
-            val paint = if (i == 0) primary else secondary
-            c.drawText(line, left + padH, baseline, paint)
+        lines.forEach { (line, paint) ->
+            val x = if (rightAlign) left + boxW - padH - paint.measureText(line) else left + padH
+            c.drawText(line, x, baseline, paint)
             baseline += lineH + gap
         }
     }
@@ -169,33 +174,65 @@ object StampRenderer {
         val lineH = lineHeight(primary)
         val gap = lineH * 0.25f
 
-        val leftLines = buildList {
+        // Primary column: date/time, session, activity, name — never truncated.
+        // Detail column: address (wrapped, shown in full), GPS, note.
+        val primaryLines = buildList {
             add(info.dateTime())
             info.sessionLine()?.let { add(it) }
+            info.activityLine()?.let { addAll(wrap(primary, it, wf * 0.55f, 2)) }
+            info.personLine()?.let { addAll(wrap(primary, it, wf * 0.55f, 2)) }
         }
-        val leftW = leftLines.maxOf { primary.measureText(it) }
-        val rightMaxW = wf - padH * 3 - leftW
-        val rightLines = buildList {
-            info.addressLine()?.let { add(ellipsize(secondary, it, rightMaxW)) }
-            info.gpsLine()?.let { add(ellipsize(secondary, it, rightMaxW)) }
-            info.noteLine()?.let { add(ellipsize(secondary, it, rightMaxW)) }
+        val primW = primaryLines.maxOf { primary.measureText(it) }
+        val detailMaxW = (wf - padH * 3 - primW).coerceAtLeast(wf * 0.3f)
+        val detailLines = buildList {
+            info.addressLine()?.let { addAll(wrap(secondary, it, detailMaxW, 3)) }
+            info.gpsLine()?.let { addAll(wrap(secondary, it, detailMaxW, 2)) }
+            info.noteLine()?.let { addAll(wrap(secondary, it, detailMaxW, 2)) }
         }
-        val rows = max(leftLines.size, rightLines.size)
+        val rows = max(primaryLines.size, detailLines.size)
         val barH = rows * lineH + (rows - 1) * gap + padV * 2
         val top = h - barH
 
         c.drawRect(RectF(0f, top, wf, h.toFloat()), fillPaint(theme.scrim))
 
+        // Default: primary column on the left, details flush right. Right-align swaps them.
+        val rightSide = opts.align == StampAlign.RIGHT
         var baseline = top + padV - primary.ascent()
-        leftLines.forEachIndexed { i, line ->
-            c.drawText(line, padH, baseline, if (i == 0) primary else secondary)
+        primaryLines.forEachIndexed { i, line ->
+            val x = if (rightSide) wf - padH - primary.measureText(line) else padH
+            c.drawText(line, x, baseline, if (i == 0) primary else secondary)
             baseline += lineH + gap
         }
         baseline = top + padV - secondary.ascent()
-        rightLines.forEach { line ->
-            c.drawText(line, wf - padH - secondary.measureText(line), baseline, secondary)
+        detailLines.forEach { line ->
+            val x = if (rightSide) padH else wf - padH - secondary.measureText(line)
+            c.drawText(line, x, baseline, secondary)
             baseline += lineH + gap
         }
+    }
+
+    /** Word-wrap [text] to lines fitting [maxWidth]; clamps to [maxLines] by ellipsizing the last line. */
+    private fun wrap(paint: Paint, text: String, maxWidth: Float, maxLines: Int): List<String> {
+        if (paint.measureText(text) <= maxWidth) return listOf(text)
+        val words = text.split(Regex("\\s+")).filter { it.isNotEmpty() }
+        if (words.isEmpty()) return listOf(text)
+        val lines = mutableListOf<String>()
+        var cur = ""
+        for (word in words) {
+            val cand = if (cur.isEmpty()) word else "$cur $word"
+            if (paint.measureText(cand) <= maxWidth || cur.isEmpty()) {
+                cur = cand
+            } else {
+                lines.add(cur)
+                cur = word
+            }
+        }
+        if (cur.isNotEmpty()) lines.add(cur)
+        if (lines.size <= maxLines) return lines
+        val kept = lines.take(maxLines).toMutableList()
+        val spilled = (listOf(kept.removeAt(kept.size - 1)) + lines.drop(maxLines)).joinToString(" ")
+        kept.add(ellipsize(paint, spilled, maxWidth))
+        return kept
     }
 
     private fun ellipsize(paint: Paint, text: String, maxWidth: Float): String {
@@ -218,13 +255,16 @@ object StampRenderer {
         val title = textPaint(wf * 0.034f * s, theme.text, bold = true, font = opts.font)
         val body = textPaint(wf * 0.029f * s, theme.textDim, font = opts.font)
 
+        val rightAlign = opts.align == StampAlign.RIGHT
         val header = ellipsize(title, info.sessionLine() ?: "StampShot", wf * 0.82f)
         val rowMaxW = wf * 0.82f
         val rows = buildList {
-            add(ellipsize(body, info.dateTime(), rowMaxW))
-            info.addressLine()?.let { add(ellipsize(body, it, rowMaxW)) }
-            info.gpsLine()?.let { add(ellipsize(body, it, rowMaxW)) }
-            info.noteLine()?.let { add(ellipsize(body, it, rowMaxW)) }
+            addAll(wrap(body, info.dateTime(), rowMaxW, 1))
+            info.activityLine()?.let { addAll(wrap(body, it, rowMaxW, 2)) }
+            info.personLine()?.let { addAll(wrap(body, it, rowMaxW, 2)) }
+            info.addressLine()?.let { addAll(wrap(body, it, rowMaxW, 3)) }
+            info.gpsLine()?.let { addAll(wrap(body, it, rowMaxW, 2)) }
+            info.noteLine()?.let { addAll(wrap(body, it, rowMaxW, 2)) }
         }
 
         val titleH = lineHeight(title)
@@ -239,22 +279,29 @@ object StampRenderer {
         val top = stampTop(opts.position, h, margin, boxH)
 
         c.drawRoundRect(RectF(left, top, left + boxW, top + boxH), radius, radius, fillPaint(theme.scrim))
-        c.drawRect(RectF(left, top, left + accentW, top + boxH), fillPaint(theme.accent))
+        val accentL = if (rightAlign) left + boxW - accentW else left
+        c.drawRect(RectF(accentL, top, accentL + accentW, top + boxH), fillPaint(theme.accent))
+
+        // Text span inside the card, inset from the accent edge.
+        val textL = if (rightAlign) left + padH else left + accentW + padH
+        val textR = if (rightAlign) left + boxW - accentW - padH else left + boxW - padH
+        fun xFor(paint: Paint, line: String): Float =
+            if (rightAlign) textR - paint.measureText(line) else textL
 
         val titleBaseline = top + padV - title.ascent()
-        c.drawText(header, left + accentW + padH, titleBaseline, title)
+        c.drawText(header, xFor(title, header), titleBaseline, title)
 
         var baseline = titleBaseline + titleH + dividerGap
         val titleBottom = titleBaseline + title.descent()
         val firstRowTop = baseline + body.ascent()
         val dividerY = titleBottom + (firstRowTop - titleBottom) / 2
         c.drawRect(
-            RectF(left + accentW + padH, dividerY, left + boxW - padH, dividerY + wf * 0.0016f),
+            RectF(textL, dividerY, textR, dividerY + wf * 0.0016f),
             fillPaint(theme.accent),
         )
 
         rows.forEach { row ->
-            c.drawText(row, left + accentW + padH, baseline, body)
+            c.drawText(row, xFor(body, row), baseline, body)
             baseline += bodyH + gap
         }
     }
@@ -278,18 +325,20 @@ object StampRenderer {
         val padV = wf * 0.016f
         val padH = wf * 0.024f
 
-        val leftLines = buildList {
+        val primaryLines = buildList {
             add(info.dateTime())
             info.sessionLine()?.let { add(it) }
+            info.activityLine()?.let { addAll(wrap(primary, it, wf * 0.55f, 2)) }
+            info.personLine()?.let { addAll(wrap(primary, it, wf * 0.55f, 2)) }
         }
-        val leftW = leftLines.maxOf { primary.measureText(it) }
-        val rightMaxW = wf - padH * 3 - leftW
-        val rightLines = buildList {
-            info.addressLine()?.let { add(ellipsize(secondary, it, rightMaxW)) }
-            info.gpsLine()?.let { add(ellipsize(secondary, it, rightMaxW)) }
-            info.noteLine()?.let { add(ellipsize(secondary, it, rightMaxW)) }
+        val primW = primaryLines.maxOf { primary.measureText(it) }
+        val detailMaxW = (wf - padH * 3 - primW).coerceAtLeast(wf * 0.3f)
+        val detailLines = buildList {
+            info.addressLine()?.let { addAll(wrap(secondary, it, detailMaxW, 3)) }
+            info.gpsLine()?.let { addAll(wrap(secondary, it, detailMaxW, 2)) }
+            info.noteLine()?.let { addAll(wrap(secondary, it, detailMaxW, 2)) }
         }
-        val rows = max(leftLines.size, rightLines.size)
+        val rows = max(primaryLines.size, detailLines.size)
         val stripH = (rows * lineH + (rows - 1) * gap + padV * 2).toInt()
 
         val out = Bitmap.createBitmap(w, h + stripH, Bitmap.Config.ARGB_8888)
@@ -298,14 +347,17 @@ object StampRenderer {
         c.drawRect(RectF(0f, h.toFloat(), wf, (h + stripH).toFloat()), fillPaint(withAlpha(stripColor, max(opts.bgOpacity, 0.85f))))
         c.drawRect(RectF(0f, h.toFloat(), wf, h + wf * 0.002f), fillPaint(withAlpha(textColor, opts.textOpacity)))
 
+        val rightSide = opts.align == StampAlign.RIGHT
         var baseline = h + padV - primary.ascent()
-        leftLines.forEachIndexed { i, line ->
-            c.drawText(line, padH, baseline, if (i == 0) primary else secondary)
+        primaryLines.forEachIndexed { i, line ->
+            val x = if (rightSide) wf - padH - primary.measureText(line) else padH
+            c.drawText(line, x, baseline, if (i == 0) primary else secondary)
             baseline += lineH + gap
         }
         baseline = h + padV - secondary.ascent()
-        rightLines.forEach { line ->
-            c.drawText(line, wf - padH - secondary.measureText(line), baseline, secondary)
+        detailLines.forEach { line ->
+            val x = if (rightSide) padH else wf - padH - secondary.measureText(line)
+            c.drawText(line, x, baseline, secondary)
             baseline += lineH + gap
         }
         return out

@@ -7,6 +7,7 @@ import com.stampshot.app.data.SettingsRepository
 import com.stampshot.app.stamp.DateFormatOption
 import com.stampshot.app.stamp.GpsFormat
 import com.stampshot.app.stamp.PrivacyLevel
+import com.stampshot.app.stamp.StampAlign
 import com.stampshot.app.stamp.StampFont
 import com.stampshot.app.stamp.StampPosition
 import com.stampshot.app.stamp.StampStyle
@@ -47,6 +48,9 @@ class MainViewModel(val repo: SettingsRepository) : ViewModel() {
     fun setBgOpacity(v: Float) = viewModelScope.launch { repo.setBgOpacity(v) }
     fun setStampPosition(v: StampPosition) = viewModelScope.launch { repo.setStampPosition(v) }
     fun setStampFont(v: StampFont) = viewModelScope.launch { repo.setStampFont(v) }
+    fun setStampAlign(v: StampAlign) = viewModelScope.launch { repo.setStampAlign(v) }
+    fun setActivity(v: String) = viewModelScope.launch { repo.setActivity(v) }
+    fun setPersonName(v: String) = viewModelScope.launch { repo.setPersonName(v) }
     fun setDateFormat(v: DateFormatOption) = viewModelScope.launch { repo.setDateFormat(v) }
     fun setGpsFormat(v: GpsFormat) = viewModelScope.launch { repo.setGpsFormat(v) }
     fun setShowNumber(v: Boolean) = viewModelScope.launch { repo.setShowNumber(v) }

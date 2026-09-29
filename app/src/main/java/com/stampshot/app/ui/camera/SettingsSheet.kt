@@ -44,6 +44,7 @@ import com.stampshot.app.data.AppSettings
 import com.stampshot.app.location.LocationStamper
 import com.stampshot.app.stamp.DateFormatOption
 import com.stampshot.app.stamp.GpsFormat
+import com.stampshot.app.stamp.StampAlign
 import com.stampshot.app.stamp.StampFont
 import com.stampshot.app.stamp.StampPosition
 import com.stampshot.app.stamp.StampStyle
@@ -131,6 +132,11 @@ fun SettingsSheet(viewModel: MainViewModel, onDismiss: () -> Unit) {
                 options = StampFont.entries.map { it to it.label },
                 selected = settings.stampFont,
             ) { viewModel.setStampFont(it) }
+            ChipRow(
+                label = "Text align",
+                options = StampAlign.entries.map { it to it.label },
+                selected = settings.stampAlign,
+            ) { viewModel.setStampAlign(it) }
             ColorRow(
                 label = "Text color",
                 choices = AppSettings.FONT_COLOR_CHOICES,
@@ -183,6 +189,26 @@ fun SettingsSheet(viewModel: MainViewModel, onDismiss: () -> Unit) {
             ToggleRow(title = "24-hour clock", checked = settings.time24h) {
                 viewModel.setTime24h(it)
             }
+            OutlinedTextField(
+                value = settings.activity,
+                onValueChange = { viewModel.setActivity(it) },
+                label = { Text("Activity / kegiatan (optional)") },
+                placeholder = { Text("e.g. Site inspection, Patroli malam") },
+                singleLine = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+            )
+            OutlinedTextField(
+                value = settings.personName,
+                onValueChange = { viewModel.setPersonName(it) },
+                label = { Text("Name (optional)") },
+                placeholder = { Text("e.g. Budi Santoso") },
+                singleLine = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+            )
             OutlinedTextField(
                 value = settings.note,
                 onValueChange = { viewModel.setNote(it) },
