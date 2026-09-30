@@ -4,10 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.stampshot.app.data.AppSettings
 import com.stampshot.app.data.SettingsRepository
+import com.stampshot.app.stamp.AddressMode
 import com.stampshot.app.stamp.DateFormatOption
 import com.stampshot.app.stamp.GpsFormat
 import com.stampshot.app.stamp.PrivacyLevel
-import com.stampshot.app.stamp.StampAlign
+import com.stampshot.app.stamp.StampElements
 import com.stampshot.app.stamp.StampFont
 import com.stampshot.app.stamp.StampPosition
 import com.stampshot.app.stamp.StampStyle
@@ -33,8 +34,6 @@ class MainViewModel(val repo: SettingsRepository) : ViewModel() {
     var volumeKeyHandler: (() -> Boolean)? = null
 
     fun setStyle(style: StampStyle) = viewModelScope.launch { repo.setStyle(style) }
-    fun setShowAddress(v: Boolean) = viewModelScope.launch { repo.setShowAddress(v) }
-    fun setShowGps(v: Boolean) = viewModelScope.launch { repo.setShowGps(v) }
     fun setNote(v: String) = viewModelScope.launch { repo.setNote(v) }
     fun setSession(name: String) = viewModelScope.launch { repo.setSession(name) }
     fun setFlashMode(v: Int) = viewModelScope.launch { repo.setFlashMode(v) }
@@ -48,7 +47,9 @@ class MainViewModel(val repo: SettingsRepository) : ViewModel() {
     fun setBgOpacity(v: Float) = viewModelScope.launch { repo.setBgOpacity(v) }
     fun setStampPosition(v: StampPosition) = viewModelScope.launch { repo.setStampPosition(v) }
     fun setStampFont(v: StampFont) = viewModelScope.launch { repo.setStampFont(v) }
-    fun setStampAlign(v: StampAlign) = viewModelScope.launch { repo.setStampAlign(v) }
+    fun setStampTransparent(v: Boolean) = viewModelScope.launch { repo.setStampTransparent(v) }
+    fun setElements(v: StampElements) = viewModelScope.launch { repo.setElements(v) }
+    fun setAddressMode(v: AddressMode) = viewModelScope.launch { repo.setAddressMode(v) }
     fun setActivity(v: String) = viewModelScope.launch { repo.setActivity(v) }
     fun setPersonName(v: String) = viewModelScope.launch { repo.setPersonName(v) }
     fun setDateFormat(v: DateFormatOption) = viewModelScope.launch { repo.setDateFormat(v) }

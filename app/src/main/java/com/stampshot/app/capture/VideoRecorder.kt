@@ -127,8 +127,8 @@ class VideoRecorder(private val context: Context) {
                 note = info.note,
                 activity = info.activity,
                 personName = info.personName,
-                showAddress = info.showAddress,
-                showGps = info.showGps,
+                elementsJson = info.elements.toJson(),
+                addressMode = info.addressMode.name,
             ),
         )
         return uri

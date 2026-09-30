@@ -1,6 +1,7 @@
 package com.stampshot.app.stamp
 
 import android.location.Location
+import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -39,6 +40,87 @@ enum class GpsFormat(val label: String) {
     DMS("39°14'14\"N, 123°9'0\"W"),
 }
 
+enum class AddressMode(val label: String) {
+    FULL("Full address"), CITY("City only"),
+}
+
+enum class ElemSize(val label: String, val scale: Float) {
+    S("S", 0.85f), M("M", 1f), L("L", 1.25f);
+}
+
+/** One stamp element's visibility, column (two-column styles) and size. */
+data class El(
+    val side: StampAlign = StampAlign.LEFT,
+    val size: ElemSize = ElemSize.M,
+    val on: Boolean = true,
+) {
+    fun toJson(): JSONObject = JSONObject().apply {
+        put("side", side.name)
+        put("size", size.name)
+        put("on", on)
+    }
+
+    companion object {
+        fun fromJson(o: JSONObject?, fallback: El): El = if (o == null) fallback else El(
+            side = o.optString("side").let {
+                runCatching { StampAlign.valueOf(it) }.getOrDefault(fallback.side)
+            },
+            size = o.optString("size").let {
+                runCatching { ElemSize.valueOf(it) }.getOrDefault(fallback.size)
+            },
+            on = o.optBoolean("on", fallback.on),
+        )
+    }
+}
+
+/** The full set of configurable stamp elements, in canonical display order. */
+data class StampElements(
+    val date: El = El(),
+    val time: El = El(),
+    val session: El = El(),
+    val activity: El = El(),
+    val personName: El = El(),
+    val address: El = El(side = StampAlign.RIGHT),
+    val gps: El = El(side = StampAlign.RIGHT, on = false),
+    val note: El = El(side = StampAlign.RIGHT),
+) {
+    fun toJson(): String = JSONObject().apply {
+        put("date", date.toJson())
+        put("time", time.toJson())
+        put("session", session.toJson())
+        put("activity", activity.toJson())
+        put("personName", personName.toJson())
+        put("address", address.toJson())
+        put("gps", gps.toJson())
+        put("note", note.toJson())
+    }.toString()
+
+    companion object {
+        fun fromJson(json: String?, defaults: StampElements = StampElements()): StampElements {
+            val o = runCatching { JSONObject(json ?: "") }.getOrNull() ?: return defaults
+            return StampElements(
+                date = El.fromJson(o.optJSONObject("date"), defaults.date),
+                time = El.fromJson(o.optJSONObject("time"), defaults.time),
+                session = El.fromJson(o.optJSONObject("session"), defaults.session),
+                activity = El.fromJson(o.optJSONObject("activity"), defaults.activity),
+                personName = El.fromJson(o.optJSONObject("personName"), defaults.personName),
+                address = El.fromJson(o.optJSONObject("address"), defaults.address),
+                gps = El.fromJson(o.optJSONObject("gps"), defaults.gps),
+                note = El.fromJson(o.optJSONObject("note"), defaults.note),
+            )
+        }
+    }
+}
+
+/** A resolved stamp line ready for layout: text + which column + size + weight. */
+data class StampLine(
+    val text: String,
+    val side: StampAlign,
+    val size: ElemSize,
+    val bold: Boolean,
+    val maxLines: Int = 2,
+)
+
 /** Per-capture look: colors carry ARGB, -1 means "auto" (Smart Readability). */
 data class StampOptions(
     val fontScale: Float = 1f,
@@ -48,7 +130,7 @@ data class StampOptions(
     val bgOpacity: Float = 0.62f,
     val position: StampPosition = StampPosition.BOTTOM_LEFT,
     val font: StampFont = StampFont.DEFAULT,
-    val align: StampAlign = StampAlign.LEFT,
+    val transparent: Boolean = false,
 )
 
 enum class PrivacyLevel(val label: String, val description: String) {
@@ -68,9 +150,9 @@ data class StampInfo(
     val city: String? = null,
     val latitude: Double? = null,
     val longitude: Double? = null,
-    val showAddress: Boolean = true,
-    val showGps: Boolean = true,
     val showNumber: Boolean = true,
+    val elements: StampElements = StampElements(),
+    val addressMode: AddressMode = AddressMode.FULL,
     val dateFormat: DateFormatOption = DateFormatOption.DAY_MONTH_YEAR,
     val gpsFormat: GpsFormat = GpsFormat.DECIMAL,
     val showSeconds: Boolean = true,
@@ -100,10 +182,16 @@ data class StampInfo(
     }
 
     fun addressLine(): String? =
-        if (showAddress && !address.isNullOrBlank()) address else null
+        if (!address.isNullOrBlank() || !city.isNullOrBlank()) {
+            when (addressMode) {
+                AddressMode.FULL -> address ?: city
+                // Prefer the city, but don't drop the line when it's unresolved.
+                AddressMode.CITY -> city ?: address
+            }?.takeIf { it.isNotBlank() }
+        } else null
 
     fun gpsLine(): String? =
-        if (showGps && latitude != null && longitude != null) {
+        if (latitude != null && longitude != null) {
             when (gpsFormat) {
                 GpsFormat.DECIMAL -> "%.5f, %.5f".format(Locale.US, latitude, longitude)
                 GpsFormat.DMS -> "${dms(latitude, true)}, ${dms(longitude, false)}"
@@ -126,35 +214,58 @@ data class StampInfo(
 
     fun personLine(): String? = personName?.takeIf { it.isNotBlank() }?.let { "Name: $it" }
 
-    /** All visible lines in display order. */
-    fun lines(): List<String> = buildList {
-        add(dateTime())
-        sessionLine()?.let { add(it) }
-        activityLine()?.let { add(it) }
-        personLine()?.let { add(it) }
-        addressLine()?.let { add(it) }
-        gpsLine()?.let { add(it) }
-        noteLine()?.let { add(it) }
+    /** All enabled elements resolved to laid-out lines, in canonical order. */
+    fun stampLines(): List<StampLine> = buildList {
+        val els = elements
+        if (els.date.on && els.time.on && els.date.side == els.time.side) {
+            val size = if (els.date.size.ordinal >= els.time.size.ordinal) els.date.size else els.time.size
+            add(StampLine(dateTime(), els.date.side, size, bold = true))
+        } else {
+            if (els.date.on) add(StampLine(date(), els.date.side, els.date.size, bold = true))
+            if (els.time.on) add(StampLine(time(), els.time.side, els.time.size, bold = true))
+        }
+        sessionLine()?.let {
+            if (els.session.on) add(StampLine(it, els.session.side, els.session.size, bold = false))
+        }
+        activityLine()?.let {
+            if (els.activity.on) add(StampLine(it, els.activity.side, els.activity.size, bold = false))
+        }
+        personLine()?.let {
+            if (els.personName.on) add(StampLine(it, els.personName.side, els.personName.size, bold = false))
+        }
+        addressLine()?.let {
+            if (els.address.on) add(StampLine(it, els.address.side, els.address.size, bold = false, maxLines = 3))
+        }
+        gpsLine()?.let {
+            if (els.gps.on) add(StampLine(it, els.gps.side, els.gps.size, bold = false))
+        }
+        noteLine()?.let {
+            if (els.note.on) add(StampLine(it, els.note.side, els.note.size, bold = false))
+        }
+        if (isEmpty()) add(StampLine(dateTime(), StampAlign.LEFT, ElemSize.M, bold = true))
     }
+
+    /** Line texts only — kept for callers that don't care about layout. */
+    fun lines(): List<String> = stampLines().map { it.text }
 
     /** Redact the stamp for a lower privacy level (re-rendered on the clean original). */
     fun reduced(level: PrivacyLevel): StampInfo = when (level) {
         PrivacyLevel.FULL -> this
         PrivacyLevel.APPROXIMATE -> copy(
-            address = city,
-            latitude = null, longitude = null, showGps = false,
+            address = null, addressMode = AddressMode.CITY,
+            latitude = null, longitude = null,
         )
         PrivacyLevel.PRIVATE -> copy(
             address = null, city = null,
             latitude = null, longitude = null,
             note = null,
-            showAddress = false, showGps = false,
         )
     }
 
     /** True when the stamp leaks location info a private share would need to re-render. */
     fun hasSensitiveContent(): Boolean =
-        (showAddress && !address.isNullOrBlank()) || (showGps && latitude != null)
+        (elements.address.on && addressLine() != null) ||
+            (elements.gps.on && gpsLine() != null)
 
     companion object {
         val FILE_TS_FMT = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)

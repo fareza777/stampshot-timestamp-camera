@@ -7,10 +7,13 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.stampshot.app.stamp.AddressMode
 import com.stampshot.app.stamp.DateFormatOption
+import com.stampshot.app.stamp.El
 import com.stampshot.app.stamp.GpsFormat
 import com.stampshot.app.stamp.PrivacyLevel
 import com.stampshot.app.stamp.StampAlign
+import com.stampshot.app.stamp.StampElements
 import com.stampshot.app.stamp.StampFont
 import com.stampshot.app.stamp.StampPosition
 import com.stampshot.app.stamp.StampStyle
@@ -24,8 +27,6 @@ private val Context.settingsStore by preferencesDataStore(name = "stampshot_sett
 
 data class AppSettings(
     val style: StampStyle = StampStyle.MINIMAL_CORNER,
-    val showAddress: Boolean = true,
-    val showGps: Boolean = false,
     val note: String = "",
     val sessions: List<String> = listOf(DEFAULT_SESSION),
     val currentSession: String = DEFAULT_SESSION,
@@ -42,7 +43,9 @@ data class AppSettings(
     val bgOpacity: Float = 0.62f,
     val stampPosition: StampPosition = StampPosition.BOTTOM_LEFT,
     val stampFont: StampFont = StampFont.DEFAULT,
-    val stampAlign: StampAlign = StampAlign.LEFT,
+    val stampTransparent: Boolean = false,
+    val elements: StampElements = StampElements(),
+    val addressMode: AddressMode = AddressMode.FULL,
     val activity: String = "",
     val personName: String = "",
     val dateFormat: DateFormatOption = DateFormatOption.DAY_MONTH_YEAR,
@@ -115,7 +118,10 @@ class SettingsRepository(private val context: Context) {
         val BG_OPACITY = floatPreferencesKey("bg_opacity")
         val POSITION = stringPreferencesKey("stamp_position")
         val FONT = stringPreferencesKey("stamp_font")
-        val ALIGN = stringPreferencesKey("stamp_align")
+        val ALIGN = stringPreferencesKey("stamp_align") // legacy: seeds element sides
+        val TRANSPARENT = booleanPreferencesKey("stamp_transparent")
+        val ELEMENTS = stringPreferencesKey("elements_json")
+        val ADDRESS_MODE = stringPreferencesKey("address_mode")
         val ACTIVITY = stringPreferencesKey("activity")
         val PERSON_NAME = stringPreferencesKey("person_name")
         val DATE_FORMAT = stringPreferencesKey("date_format")
@@ -136,11 +142,16 @@ class SettingsRepository(private val context: Context) {
     }
 
     val settings: Flow<AppSettings> = context.settingsStore.data.map { p ->
+        val legacyAlign = p[K.ALIGN]?.let { runCatching { StampAlign.valueOf(it) }.getOrNull() }
+            ?: StampAlign.LEFT
+        val legacyElements = seedElements(
+            align = legacyAlign,
+            showAddress = p[K.SHOW_ADDRESS] ?: true,
+            showGps = p[K.SHOW_GPS] ?: false,
+        )
         AppSettings(
             style = p[K.STYLE]?.let { runCatching { StampStyle.valueOf(it) }.getOrNull() }
                 ?: StampStyle.MINIMAL_CORNER,
-            showAddress = p[K.SHOW_ADDRESS] ?: true,
-            showGps = p[K.SHOW_GPS] ?: false,
             note = p[K.NOTE] ?: "",
             sessions = parseStringArray(p[K.SESSIONS]).ifEmpty { listOf(AppSettings.DEFAULT_SESSION) },
             currentSession = p[K.CURRENT_SESSION] ?: AppSettings.DEFAULT_SESSION,
@@ -159,8 +170,10 @@ class SettingsRepository(private val context: Context) {
                 ?: StampPosition.BOTTOM_LEFT,
             stampFont = p[K.FONT]?.let { runCatching { StampFont.valueOf(it) }.getOrNull() }
                 ?: StampFont.DEFAULT,
-            stampAlign = p[K.ALIGN]?.let { runCatching { StampAlign.valueOf(it) }.getOrNull() }
-                ?: StampAlign.LEFT,
+            stampTransparent = p[K.TRANSPARENT] ?: false,
+            elements = StampElements.fromJson(p[K.ELEMENTS], legacyElements),
+            addressMode = p[K.ADDRESS_MODE]?.let { runCatching { AddressMode.valueOf(it) }.getOrNull() }
+                ?: AddressMode.FULL,
             activity = p[K.ACTIVITY] ?: "",
             personName = p[K.PERSON_NAME] ?: "",
             dateFormat = p[K.DATE_FORMAT]?.let { runCatching { DateFormatOption.valueOf(it) }.getOrNull() }
@@ -186,8 +199,6 @@ class SettingsRepository(private val context: Context) {
     suspend fun current(): AppSettings = settings.first()
 
     suspend fun setStyle(style: StampStyle) = put(K.STYLE, style.name)
-    suspend fun setShowAddress(v: Boolean) = put(K.SHOW_ADDRESS, v)
-    suspend fun setShowGps(v: Boolean) = put(K.SHOW_GPS, v)
     suspend fun setNote(v: String) = put(K.NOTE, v.trim())
     suspend fun setFlashMode(v: Int) = put(K.FLASH, v)
     suspend fun setLensFacingBack(v: Boolean) = put(K.LENS_BACK, v)
@@ -200,7 +211,9 @@ class SettingsRepository(private val context: Context) {
     suspend fun setBgOpacity(v: Float) = put(K.BG_OPACITY, v.coerceIn(0f, 1f))
     suspend fun setStampPosition(v: StampPosition) = put(K.POSITION, v.name)
     suspend fun setStampFont(v: StampFont) = put(K.FONT, v.name)
-    suspend fun setStampAlign(v: StampAlign) = put(K.ALIGN, v.name)
+    suspend fun setStampTransparent(v: Boolean) = put(K.TRANSPARENT, v)
+    suspend fun setElements(v: StampElements) = put(K.ELEMENTS, v.toJson())
+    suspend fun setAddressMode(v: AddressMode) = put(K.ADDRESS_MODE, v.name)
     suspend fun setActivity(v: String) = put(K.ACTIVITY, v.trim())
     suspend fun setPersonName(v: String) = put(K.PERSON_NAME, v.trim())
     suspend fun setDateFormat(v: DateFormatOption) = put(K.DATE_FORMAT, v.name)
@@ -259,6 +272,21 @@ class SettingsRepository(private val context: Context) {
             val arr = JSONArray(json)
             (0 until arr.length()).map { arr.getString(it) }
         }.getOrDefault(emptyList())
+    }
+
+    /** Legacy (pre per-element) prefs -> element defaults matching the old two-column look. */
+    private fun seedElements(align: StampAlign, showAddress: Boolean, showGps: Boolean): StampElements {
+        val detailSide = if (align == StampAlign.LEFT) StampAlign.RIGHT else StampAlign.LEFT
+        return StampElements(
+            date = El(side = align),
+            time = El(side = align),
+            session = El(side = align),
+            activity = El(side = align),
+            personName = El(side = align),
+            address = El(side = detailSide, on = showAddress),
+            gps = El(side = detailSide, on = showGps),
+            note = El(side = detailSide),
+        )
     }
 
     private fun parseCounterMap(json: String?): Map<String, Int> {

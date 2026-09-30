@@ -7,7 +7,9 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.core.content.FileProvider
 import com.stampshot.app.data.PhotoIndex
+import com.stampshot.app.stamp.AddressMode
 import com.stampshot.app.stamp.PrivacyLevel
+import com.stampshot.app.stamp.StampElements
 import com.stampshot.app.stamp.StampInfo
 import com.stampshot.app.stamp.StampOptions
 import com.stampshot.app.stamp.StampRenderer
@@ -112,8 +114,10 @@ object PrivateShare {
         city = r.city,
         latitude = r.latitude,
         longitude = r.longitude,
-        showAddress = r.showAddress,
-        showGps = r.showGps,
+        elements = StampElements.fromJson(r.elementsJson),
+        addressMode = r.addressMode?.let {
+            runCatching { AddressMode.valueOf(it) }.getOrNull()
+        } ?: AddressMode.FULL,
     )
 
     private fun launchShare(context: Context, uri: Uri, mimeType: String) {

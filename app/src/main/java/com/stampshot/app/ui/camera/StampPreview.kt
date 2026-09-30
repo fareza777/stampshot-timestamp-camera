@@ -21,7 +21,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -30,21 +32,24 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.stampshot.app.data.AppSettings
 import com.stampshot.app.location.LocationStamper
+import com.stampshot.app.stamp.LocationStamp
+import com.stampshot.app.stamp.StampAlign
 import com.stampshot.app.stamp.StampInfo
+import com.stampshot.app.stamp.StampLine
+import com.stampshot.app.stamp.StampPosition
 import com.stampshot.app.stamp.StampRenderer
 import com.stampshot.app.stamp.StampStyle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 /**
  * Live overlay on the camera preview showing exactly what the stamp will look
  * like for the current style — live clock, session + next photo number, and
- * location lines when enabled. Adapts light/dark the same way the renderer
- * does by sampling the preview frame under the stamp area once a second.
+ * the configured elements in their chosen columns and sizes. Adapts light/dark
+ * the same way the renderer does by sampling the preview frame under the stamp
+ * area once a second. In transparent mode the preview drops the scrim and adds
+ * the same text shadow the baked stamp gets.
  */
 @Composable
 fun StampPreview(
@@ -53,6 +58,8 @@ fun StampPreview(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val s = settings
+    val els = s.elements
 
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
@@ -64,12 +71,12 @@ fun StampPreview(
 
     // Sample the preview frame under the stamp region for smart readability.
     var luminance by remember { mutableDoubleStateOf(0.0) }
-    LaunchedEffect(settings.style) {
+    LaunchedEffect(s.style) {
         while (true) {
             delay(800)
             val frame = previewView.bitmap
             if (frame != null) {
-                val style = settings.style
+                val style = s.style
                 luminance = withContext(Dispatchers.Default) {
                     when (style) {
                         StampStyle.CLEAN_BOTTOM_BAR ->
@@ -84,172 +91,160 @@ fun StampPreview(
 
     // Live location for the preview — resolves the real address so the stamp
     // shows exactly what a photo will get (refreshed at capture anyway).
-    var locationHint by remember { mutableStateOf<String?>(null) }
-    var coordsHint by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(settings.showAddress, settings.showGps) {
-        if ((settings.showAddress || settings.showGps) && LocationStamper.hasPermission(context)) {
-            val snap = LocationStamper.snapshot(context, timeoutMs = 3000)
-            if (snap != null) {
-                coordsHint = "%.5f, %.5f".format(Locale.US, snap.location.latitude, snap.location.longitude)
-                locationHint = snap.address ?: "address resolved at capture"
-            }
-        } else {
-            locationHint = null
-            coordsHint = null
-        }
+    var loc by remember { mutableStateOf<LocationStamp?>(null) }
+    LaunchedEffect(els.address.on, els.gps.on) {
+        loc = if ((els.address.on || els.gps.on) && LocationStamper.hasPermission(context)) {
+            LocationStamper.snapshot(context, timeoutMs = 3000)
+        } else null
     }
 
+    val info = StampInfo(
+        timestampMillis = now,
+        sessionName = s.currentSession,
+        photoNumber = s.nextNumber(),
+        note = s.note.ifBlank { null },
+        activity = s.activity.ifBlank { null },
+        personName = s.personName.ifBlank { null },
+        address = loc?.address,
+        city = loc?.city,
+        latitude = loc?.location?.latitude,
+        longitude = loc?.location?.longitude,
+        showNumber = s.showNumber,
+        elements = els,
+        addressMode = s.addressMode,
+        dateFormat = s.dateFormat,
+        gpsFormat = s.gpsFormat,
+        showSeconds = s.showSeconds,
+        time24h = s.time24h,
+    )
+    val stampLines = info.stampLines()
+    val leftLines = stampLines.filter { it.side == StampAlign.LEFT }
+    val rightLines = stampLines.filter { it.side == StampAlign.RIGHT }
+
     val darkScene = luminance < 105.0
-    val s = settings
     fun Color.withOpacity(o: Float) = copy(alpha = alpha * o)
     val baseText = if (s.fontColorArgb != -1) Color(s.fontColorArgb)
         else if (darkScene) Color(0xFFF5F7FA) else Color(0xFF12161A)
     val text = baseText.withOpacity(s.textOpacity)
     val textDim = baseText.copy(alpha = baseText.alpha * 0.8f).withOpacity(s.textOpacity)
-    val baseScrim = if (s.bgColorArgb != -1) Color(s.bgColorArgb)
-        else if (darkScene) Color(0xFF080A0E) else Color(0xFFFAFBFD)
-    val scrim = baseScrim.withOpacity(s.bgOpacity)
+    val scrim = if (s.stampTransparent) Color.Transparent
+        else (if (s.bgColorArgb != -1) Color(s.bgColorArgb)
+            else if (darkScene) Color(0xFF080A0E) else Color(0xFFFAFBFD)
+        ).withOpacity(s.bgOpacity)
+    // Shadow opposite of the text tone so transparent text stays readable.
+    val textShadow = if (s.stampTransparent) {
+        Shadow(
+            color = if (darkScene) Color(0xC0000000) else Color(0xC8FFFFFF),
+            offset = Offset(0f, 1f),
+            blurRadius = 6f,
+        )
+    } else null
 
     val fontFamily = when (s.stampFont) {
-        com.stampshot.app.stamp.StampFont.SERIF -> androidx.compose.ui.text.font.FontFamily.Serif
-        com.stampshot.app.stamp.StampFont.MONO -> androidx.compose.ui.text.font.FontFamily.Monospace
-        else -> androidx.compose.ui.text.font.FontFamily.Default
+        com.stampshot.app.stamp.StampFont.SERIF -> FontFamily.Serif
+        com.stampshot.app.stamp.StampFont.MONO -> FontFamily.Monospace
+        else -> FontFamily.Default
     }
     val scale = s.fontScale
 
-    val timePattern = buildString {
-        append(if (s.time24h) "HH:mm" else "hh:mm")
-        if (s.showSeconds) append(":ss")
-        if (!s.time24h) append(" a")
-    }
-    val date = SimpleDateFormat(s.dateFormat.pattern, Locale.getDefault()).format(Date(now))
-    val time = SimpleDateFormat(timePattern, Locale.getDefault()).format(Date(now))
-    val sessionLine = if (s.showNumber) "${s.currentSession} · #%03d".format(s.nextNumber()) else s.currentSession
-    val alignRight = s.stampAlign == com.stampshot.app.stamp.StampAlign.RIGHT
-    // Mirrors StampRenderer: primary column + detail column.
-    val primaryLines = buildList {
-        add("$date · $time")
-        add(sessionLine)
-        if (s.activity.isNotBlank()) add("Activity: ${s.activity}")
-        if (s.personName.isNotBlank()) add("Name: ${s.personName}")
-    }
-    val detailLines = buildList {
-        if (s.showAddress && locationHint != null) add(locationHint!!)
-        if (s.showGps && coordsHint != null) add(coordsHint!!)
-        if (s.note.isNotBlank()) add(s.note)
-    }
-    val lines = primaryLines + detailLines
-
+    val alignEnd = s.stampPosition == StampPosition.BOTTOM_RIGHT ||
+        s.stampPosition == StampPosition.TOP_RIGHT
     val cornerMod = when (s.stampPosition) {
-        com.stampshot.app.stamp.StampPosition.BOTTOM_LEFT ->
-            modifier.padding(start = 10.dp, bottom = 12.dp)
-        com.stampshot.app.stamp.StampPosition.BOTTOM_RIGHT ->
-            modifier.padding(end = 10.dp, bottom = 12.dp).fillMaxWidth()
-        com.stampshot.app.stamp.StampPosition.TOP_LEFT ->
-            modifier.padding(start = 10.dp, top = 12.dp)
-        com.stampshot.app.stamp.StampPosition.TOP_RIGHT ->
-            modifier.padding(end = 10.dp, top = 12.dp).fillMaxWidth()
+        StampPosition.BOTTOM_LEFT -> modifier.padding(start = 10.dp, bottom = 12.dp)
+        StampPosition.BOTTOM_RIGHT -> modifier.padding(end = 10.dp, bottom = 12.dp).fillMaxWidth()
+        StampPosition.TOP_LEFT -> modifier.padding(start = 10.dp, top = 12.dp)
+        StampPosition.TOP_RIGHT -> modifier.padding(end = 10.dp, top = 12.dp).fillMaxWidth()
     }
-    val alignEnd = s.stampPosition == com.stampshot.app.stamp.StampPosition.BOTTOM_RIGHT ||
-        s.stampPosition == com.stampshot.app.stamp.StampPosition.TOP_RIGHT
 
     when (s.style) {
         StampStyle.MINIMAL_CORNER ->
-            CornerStamp(lines, scrim, text, textDim, cornerMod, scale, fontFamily, alignEnd, alignRight)
+            CornerStamp(stampLines, scrim, text, textDim, textShadow, cornerMod, scale, fontFamily, alignEnd)
         StampStyle.CLEAN_BOTTOM_BAR ->
-            BottomBarStamp(primaryLines, detailLines, scrim, text, textDim, modifier, scale, fontFamily, alignRight)
+            TwoColumnStamp(leftLines, rightLines, scrim, text, textDim, textShadow, modifier, scale, fontFamily)
         StampStyle.WORK_PROOF ->
-            WorkProofStamp(lines, scrim, text, textDim, cornerMod, scale, fontFamily, alignEnd, alignRight)
+            WorkProofStamp(info, stampLines, scrim, text, textDim, textShadow, cornerMod, scale, fontFamily, alignEnd)
         StampStyle.BOTTOM_INFO_STRIP ->
-            InfoStripStamp(primaryLines, detailLines, scrim, text, textDim, modifier, scale, fontFamily, alignRight)
+            TwoColumnStamp(leftLines, rightLines, scrim, text, textDim, textShadow, modifier, scale, fontFamily)
     }
 }
 
 @Composable
 private fun StampBox(scrim: Color, alignEnd: Boolean, modifier: Modifier, content: @Composable () -> Unit) {
+    val boxMod = if (scrim == Color.Transparent) Modifier
+        else Modifier.clip(RoundedCornerShape(6.dp)).background(scrim)
+    val padded = Modifier.then(boxMod).padding(horizontal = 10.dp, vertical = 7.dp)
     if (alignEnd) {
         Row(modifier = modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            Column(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(scrim)
-                    .padding(horizontal = 10.dp, vertical = 7.dp),
-            ) { content() }
+            Column(modifier = padded) { content() }
         }
     } else {
-        Column(
-            modifier = modifier
-                .clip(RoundedCornerShape(6.dp))
-                .background(scrim)
-                .padding(horizontal = 10.dp, vertical = 7.dp),
-        ) { content() }
+        Column(modifier = modifier.then(padded)) { content() }
     }
 }
 
 @Composable
 private fun CornerStamp(
-    lines: List<String>, scrim: Color, text: Color, textDim: Color,
-    modifier: Modifier, scale: Float, fontFamily: FontFamily, alignEnd: Boolean, alignRight: Boolean,
+    lines: List<StampLine>, scrim: Color, text: Color, textDim: Color, shadow: Shadow?,
+    modifier: Modifier, scale: Float, fontFamily: FontFamily, alignEnd: Boolean,
 ) {
     StampBox(scrim, alignEnd, modifier) {
         StampLines(
             lines, text, textDim, primarySp = 13f * scale, secondarySp = 11f * scale,
-            fontFamily = fontFamily, alignRight = alignRight,
+            fontFamily = fontFamily, alignRight = alignEnd, shadow = shadow,
         )
     }
 }
 
 @Composable
-private fun BottomBarStamp(
-    primaryLines: List<String>, detailLines: List<String>, scrim: Color, text: Color, textDim: Color,
-    modifier: Modifier, scale: Float, fontFamily: FontFamily, alignRight: Boolean,
+private fun TwoColumnStamp(
+    leftLines: List<StampLine>, rightLines: List<StampLine>,
+    scrim: Color, text: Color, textDim: Color, shadow: Shadow?,
+    modifier: Modifier, scale: Float, fontFamily: FontFamily,
 ) {
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(scrim)
+            .then(
+                if (scrim == Color.Transparent) Modifier
+                else Modifier.background(scrim),
+            )
             .padding(horizontal = 14.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        val primCol: @Composable () -> Unit = {
+        Column(modifier = Modifier.weight(0.5f)) {
             StampLines(
-                primaryLines, text, textDim, primarySp = 13f * scale, secondarySp = 11f * scale,
-                fontFamily = fontFamily, alignRight = alignRight, wrap = true,
+                leftLines, text, textDim, primarySp = 12f * scale, secondarySp = 11f * scale,
+                fontFamily = fontFamily, alignRight = false, wrap = true, shadow = shadow,
             )
         }
-        val detailCol: @Composable () -> Unit = {
+        Column(
+            modifier = Modifier.weight(0.5f),
+            horizontalAlignment = androidx.compose.ui.Alignment.End,
+        ) {
             StampLines(
-                detailLines, textDim, textDim, primarySp = 11f * scale, secondarySp = 10f * scale,
-                fontFamily = fontFamily, alignRight = !alignRight, wrap = true,
+                rightLines, text, textDim, primarySp = 12f * scale, secondarySp = 10f * scale,
+                fontFamily = fontFamily, alignRight = true, wrap = true, shadow = shadow,
             )
-        }
-        if (alignRight) {
-            Column(modifier = Modifier.weight(0.55f)) { detailCol() }
-            Column(
-                modifier = Modifier.weight(0.45f),
-                horizontalAlignment = androidx.compose.ui.Alignment.End,
-            ) { primCol() }
-        } else {
-            Column(modifier = Modifier.weight(0.45f)) { primCol() }
-            Column(
-                modifier = Modifier.weight(0.55f),
-                horizontalAlignment = androidx.compose.ui.Alignment.End,
-            ) { detailCol() }
         }
     }
 }
 
 @Composable
 private fun WorkProofStamp(
-    lines: List<String>, scrim: Color, text: Color, textDim: Color,
-    modifier: Modifier, scale: Float, fontFamily: FontFamily, alignEnd: Boolean, alignRight: Boolean,
+    info: StampInfo, lines: List<StampLine>, scrim: Color, text: Color, textDim: Color, shadow: Shadow?,
+    modifier: Modifier, scale: Float, fontFamily: FontFamily, alignEnd: Boolean,
 ) {
     val accent = text
+    val header = info.sessionLine() ?: "StampShot"
+    val rows = lines.toMutableList().apply {
+        val i = indexOfFirst { it.text == header }
+        if (i >= 0) removeAt(i)
+    }
     val body: @Composable () -> Unit = {
         Row(
             modifier = Modifier
                 .clip(RoundedCornerShape(4.dp))
-                .background(scrim),
+                .then(if (scrim == Color.Transparent) Modifier else Modifier.background(scrim)),
         ) {
             Column(
                 modifier = Modifier
@@ -259,18 +254,19 @@ private fun WorkProofStamp(
             ) {}
             Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)) {
                 Text(
-                    lines.getOrElse(1) { "" },
+                    header,
                     color = text,
                     fontSize = (13f * scale).sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = fontFamily,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodySmall.copy(shadow = shadow),
                 )
                 StampLines(
-                    listOf(lines[0]) + lines.drop(2), text, textDim,
+                    rows, text, textDim,
                     primarySp = 11f * scale, secondarySp = 10f * scale, fontFamily = fontFamily,
-                    alignRight = alignRight,
+                    alignRight = alignEnd, shadow = shadow,
                 )
             }
         }
@@ -283,48 +279,8 @@ private fun WorkProofStamp(
 }
 
 @Composable
-private fun InfoStripStamp(
-    primaryLines: List<String>, detailLines: List<String>, scrim: Color, text: Color, textDim: Color,
-    modifier: Modifier, scale: Float, fontFamily: FontFamily, alignRight: Boolean,
-) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(scrim)
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        val primCol: @Composable () -> Unit = {
-            StampLines(
-                primaryLines, text, textDim, primarySp = 12f * scale, secondarySp = 10f * scale,
-                fontFamily = fontFamily, alignRight = alignRight, wrap = true,
-            )
-        }
-        val detailCol: @Composable () -> Unit = {
-            StampLines(
-                detailLines, textDim, textDim, primarySp = 10f * scale, secondarySp = 10f * scale,
-                fontFamily = fontFamily, alignRight = !alignRight, wrap = true,
-            )
-        }
-        if (alignRight) {
-            Column(modifier = Modifier.weight(0.55f)) { detailCol() }
-            Column(
-                modifier = Modifier.weight(0.45f),
-                horizontalAlignment = androidx.compose.ui.Alignment.End,
-            ) { primCol() }
-        } else {
-            Column(modifier = Modifier.weight(0.45f)) { primCol() }
-            Column(
-                modifier = Modifier.weight(0.55f),
-                horizontalAlignment = androidx.compose.ui.Alignment.End,
-            ) { detailCol() }
-        }
-    }
-}
-
-@Composable
 private fun StampLines(
-    lines: List<String>,
+    lines: List<StampLine>,
     text: Color,
     textDim: Color,
     primarySp: Float,
@@ -332,19 +288,21 @@ private fun StampLines(
     fontFamily: FontFamily = FontFamily.Default,
     alignRight: Boolean = false,
     wrap: Boolean = false,
+    shadow: Shadow? = null,
 ) {
     val align = if (alignRight) androidx.compose.ui.text.style.TextAlign.End
         else androidx.compose.ui.text.style.TextAlign.Start
-    lines.forEachIndexed { i, line ->
+    lines.forEach { line ->
+        val sp = (if (line.bold) primarySp else secondarySp) * line.size.scale
         Text(
-            line,
-            color = if (i == 0) text else textDim,
-            fontSize = (if (i == 0) primarySp else secondarySp).sp,
-            fontWeight = if (i == 0) FontWeight.SemiBold else FontWeight.Normal,
+            line.text,
+            color = if (line.bold) text else textDim,
+            fontSize = sp.sp,
+            fontWeight = if (line.bold) FontWeight.SemiBold else FontWeight.Normal,
             fontFamily = fontFamily,
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodySmall.copy(shadow = shadow),
             textAlign = align,
-            maxLines = if (wrap) 3 else 1,
+            maxLines = if (wrap) line.maxLines else 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.fillMaxWidth(),
         )

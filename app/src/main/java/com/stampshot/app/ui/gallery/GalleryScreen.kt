@@ -212,7 +212,7 @@ fun GalleryScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                             bgOpacity = settings.bgOpacity,
                             position = settings.stampPosition,
                             font = settings.stampFont,
-                            align = settings.stampAlign,
+                            transparent = settings.stampTransparent,
                         ),
                     )
                     if (result.fellBackToPixelsOnly) {

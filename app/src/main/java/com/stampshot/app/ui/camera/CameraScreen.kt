@@ -96,7 +96,7 @@ private fun stampOptionsOf(s: AppSettings) = StampOptions(
     bgOpacity = s.bgOpacity,
     position = s.stampPosition,
     font = s.stampFont,
-    align = s.stampAlign,
+    transparent = s.stampTransparent,
 )
 
 @SuppressLint("ClickableViewAccessibility")
@@ -232,7 +232,8 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
 
     suspend fun stampInfoFor(s: AppSettings): StampInfo {
         val number = viewModel.repo.nextNumber(s.currentSession)
-        val loc = if ((s.showAddress || s.showGps) && LocationStamper.hasPermission(context)) {
+        val needsLocation = s.elements.address.on || s.elements.gps.on
+        val loc = if (needsLocation && LocationStamper.hasPermission(context)) {
             LocationStamper.snapshot(context)
         } else null
         return StampInfo(
@@ -246,9 +247,9 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
             city = loc?.city,
             latitude = loc?.location?.latitude,
             longitude = loc?.location?.longitude,
-            showAddress = s.showAddress,
-            showGps = s.showGps,
             showNumber = s.showNumber,
+            elements = s.elements,
+            addressMode = s.addressMode,
             dateFormat = s.dateFormat,
             gpsFormat = s.gpsFormat,
             showSeconds = s.showSeconds,

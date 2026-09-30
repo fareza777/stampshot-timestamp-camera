@@ -42,7 +42,10 @@ import androidx.compose.ui.unit.dp
 import com.stampshot.app.MainViewModel
 import com.stampshot.app.data.AppSettings
 import com.stampshot.app.location.LocationStamper
+import com.stampshot.app.stamp.AddressMode
 import com.stampshot.app.stamp.DateFormatOption
+import com.stampshot.app.stamp.El
+import com.stampshot.app.stamp.ElemSize
 import com.stampshot.app.stamp.GpsFormat
 import com.stampshot.app.stamp.StampAlign
 import com.stampshot.app.stamp.StampFont
@@ -132,93 +135,152 @@ fun SettingsSheet(viewModel: MainViewModel, onDismiss: () -> Unit) {
                 options = StampFont.entries.map { it to it.label },
                 selected = settings.stampFont,
             ) { viewModel.setStampFont(it) }
-            ChipRow(
-                label = "Text align",
-                options = StampAlign.entries.map { it to it.label },
-                selected = settings.stampAlign,
-            ) { viewModel.setStampAlign(it) }
             ColorRow(
                 label = "Text color",
                 choices = AppSettings.FONT_COLOR_CHOICES,
                 selected = settings.fontColorArgb,
             ) { viewModel.setFontColorArgb(it) }
-            ColorRow(
-                label = "Background color",
-                choices = AppSettings.BG_COLOR_CHOICES,
-                selected = settings.bgColorArgb,
-            ) { viewModel.setBgColorArgb(it) }
             SliderRow(
                 label = "Text opacity",
                 value = settings.textOpacity,
                 range = 0.2f..1f,
             ) { viewModel.setTextOpacity(it) }
-            SliderRow(
-                label = "Background opacity",
-                value = settings.bgOpacity,
-                range = 0f..1f,
-            ) { viewModel.setBgOpacity(it) }
+            ToggleRow(
+                title = "Transparent stamp",
+                subtitle = "No background — text blends into the photo with a soft shadow",
+                checked = settings.stampTransparent,
+            ) { viewModel.setStampTransparent(it) }
+            if (!settings.stampTransparent) {
+                ColorRow(
+                    label = "Background color",
+                    choices = AppSettings.BG_COLOR_CHOICES,
+                    selected = settings.bgColorArgb,
+                ) { viewModel.setBgColorArgb(it) }
+                SliderRow(
+                    label = "Background opacity",
+                    value = settings.bgOpacity,
+                    range = 0f..1f,
+                ) { viewModel.setBgOpacity(it) }
+            }
 
             // ---------- Stamp content ----------
-            SectionHeader("Stamp content")
-            ToggleRow(title = "Photo number (#001)", checked = settings.showNumber) {
-                viewModel.setShowNumber(it)
+            SectionHeader("Stamp text")
+            Text(
+                "Each element gets its own on/off, position (Left/Right column) and size.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            val els = settings.elements
+            ElementRow(
+                title = "Date",
+                el = els.date,
+            ) { viewModel.setElements(els.copy(date = it)) }
+            if (els.date.on) {
+                ChipRow(
+                    label = "Date format",
+                    options = DateFormatOption.entries.map { it to it.label },
+                    selected = settings.dateFormat,
+                ) { viewModel.setDateFormat(it) }
             }
-            ToggleRow(title = "Address on stamp", checked = settings.showAddress) { v ->
-                if (v) enableLocationToggle { viewModel.setShowAddress(true) }
-                else viewModel.setShowAddress(false)
+            ElementRow(
+                title = "Time",
+                el = els.time,
+            ) { viewModel.setElements(els.copy(time = it)) }
+            if (els.time.on) {
+                ToggleRow(title = "Show seconds", checked = settings.showSeconds) {
+                    viewModel.setShowSeconds(it)
+                }
+                ToggleRow(title = "24-hour clock", checked = settings.time24h) {
+                    viewModel.setTime24h(it)
+                }
             }
-            ToggleRow(title = "GPS coordinates", checked = settings.showGps) { v ->
-                if (v) enableLocationToggle { viewModel.setShowGps(true) }
-                else viewModel.setShowGps(false)
+            ElementRow(
+                title = "Session · number",
+                el = els.session,
+            ) { viewModel.setElements(els.copy(session = it)) }
+            if (els.session.on) {
+                ToggleRow(title = "Photo number (#001)", checked = settings.showNumber) {
+                    viewModel.setShowNumber(it)
+                }
             }
-            if (settings.showGps) {
+            ElementRow(
+                title = "Activity",
+                el = els.activity,
+            ) { viewModel.setElements(els.copy(activity = it)) }
+            if (els.activity.on) {
+                OutlinedTextField(
+                    value = settings.activity,
+                    onValueChange = { viewModel.setActivity(it) },
+                    label = { Text("Activity / kegiatan") },
+                    placeholder = { Text("e.g. Site inspection, Patroli malam") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+                )
+            }
+            ElementRow(
+                title = "Name",
+                el = els.personName,
+            ) { viewModel.setElements(els.copy(personName = it)) }
+            if (els.personName.on) {
+                OutlinedTextField(
+                    value = settings.personName,
+                    onValueChange = { viewModel.setPersonName(it) },
+                    label = { Text("Name") },
+                    placeholder = { Text("e.g. Budi Santoso") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+                )
+            }
+            ElementRow(
+                title = "Address",
+                el = els.address,
+                onToggle = { on ->
+                    if (on) enableLocationToggle { viewModel.setElements(els.copy(address = els.address.copy(on = true))) }
+                    else viewModel.setElements(els.copy(address = els.address.copy(on = false)))
+                },
+            ) { viewModel.setElements(els.copy(address = it)) }
+            if (els.address.on) {
+                ChipRow(
+                    label = "Address format",
+                    options = AddressMode.entries.map { it to it.label },
+                    selected = settings.addressMode,
+                ) { viewModel.setAddressMode(it) }
+            }
+            ElementRow(
+                title = "GPS coordinates",
+                el = els.gps,
+                onToggle = { on ->
+                    if (on) enableLocationToggle { viewModel.setElements(els.copy(gps = els.gps.copy(on = true))) }
+                    else viewModel.setElements(els.copy(gps = els.gps.copy(on = false)))
+                },
+            ) { viewModel.setElements(els.copy(gps = it)) }
+            if (els.gps.on) {
                 ChipRow(
                     label = "GPS format",
                     options = GpsFormat.entries.map { it to it.label },
                     selected = settings.gpsFormat,
                 ) { viewModel.setGpsFormat(it) }
             }
-            ChipRow(
-                label = "Date format",
-                options = DateFormatOption.entries.map { it to it.label },
-                selected = settings.dateFormat,
-            ) { viewModel.setDateFormat(it) }
-            ToggleRow(title = "Show seconds", checked = settings.showSeconds) {
-                viewModel.setShowSeconds(it)
+            ElementRow(
+                title = "Note",
+                el = els.note,
+            ) { viewModel.setElements(els.copy(note = it)) }
+            if (els.note.on) {
+                OutlinedTextField(
+                    value = settings.note,
+                    onValueChange = { viewModel.setNote(it) },
+                    label = { Text("Custom note") },
+                    placeholder = { Text("e.g. Block C, Floor 2") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+                )
             }
-            ToggleRow(title = "24-hour clock", checked = settings.time24h) {
-                viewModel.setTime24h(it)
-            }
-            OutlinedTextField(
-                value = settings.activity,
-                onValueChange = { viewModel.setActivity(it) },
-                label = { Text("Activity / kegiatan (optional)") },
-                placeholder = { Text("e.g. Site inspection, Patroli malam") },
-                singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-            )
-            OutlinedTextField(
-                value = settings.personName,
-                onValueChange = { viewModel.setPersonName(it) },
-                label = { Text("Name (optional)") },
-                placeholder = { Text("e.g. Budi Santoso") },
-                singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-            )
-            OutlinedTextField(
-                value = settings.note,
-                onValueChange = { viewModel.setNote(it) },
-                label = { Text("Custom note (optional)") },
-                placeholder = { Text("e.g. Block C, Floor 2") },
-                singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-            )
 
             // ---------- Camera ----------
             SectionHeader("Camera")
@@ -286,6 +348,52 @@ fun SettingsSheet(viewModel: MainViewModel, onDismiss: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(vertical = 16.dp),
             )
+        }
+    }
+}
+
+/**
+ * One stamp element's editor: on/off switch, position (column) chips and size
+ * chips. [onToggle] overrides the default switch behavior (e.g. to ask for the
+ * location permission before enabling address/GPS).
+ */
+@Composable
+private fun ElementRow(
+    title: String,
+    el: El,
+    onToggle: ((Boolean) -> Unit)? = null,
+    onChange: (El) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(title, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+            Switch(
+                checked = el.on,
+                onCheckedChange = { on -> onToggle?.invoke(on) ?: onChange(el.copy(on = on)) },
+            )
+        }
+        if (el.on) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                StampAlign.entries.forEach { a ->
+                    FilterChip(
+                        selected = el.side == a,
+                        onClick = { onChange(el.copy(side = a)) },
+                        label = { Text(a.label, style = MaterialTheme.typography.labelSmall) },
+                    )
+                }
+                Text("·", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                ElemSize.entries.forEach { z ->
+                    FilterChip(
+                        selected = el.size == z,
+                        onClick = { onChange(el.copy(size = z)) },
+                        label = { Text(z.label, style = MaterialTheme.typography.labelSmall) },
+                    )
+                }
+            }
         }
     }
 }

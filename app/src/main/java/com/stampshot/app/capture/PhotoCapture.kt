@@ -98,8 +98,8 @@ class PhotoCapture(private val context: Context) {
                     note = info.note,
                     activity = info.activity,
                     personName = info.personName,
-                    showAddress = info.showAddress,
-                    showGps = info.showGps,
+                    elementsJson = info.elements.toJson(),
+                    addressMode = info.addressMode.name,
                 ),
             )
             SavedPhoto(uri, displayName, info.photoNumber ?: 0)
@@ -203,7 +203,7 @@ class PhotoCapture(private val context: Context) {
                 exif.setAttribute(ExifInterface.TAG_DATETIME_ORIGINAL, stamp)
                 exif.setAttribute(ExifInterface.TAG_DATETIME, stamp)
                 exif.setAttribute(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL.toString())
-                if (info.showGps && info.latitude != null && info.longitude != null) {
+                if (info.elements.gps.on && info.latitude != null && info.longitude != null) {
                     exif.setLatLong(info.latitude, info.longitude)
                 }
                 exif.saveAttributes()

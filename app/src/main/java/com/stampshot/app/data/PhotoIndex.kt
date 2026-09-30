@@ -28,8 +28,9 @@ class PhotoIndex(private val context: Context) {
         val note: String?,
         val activity: String?,
         val personName: String?,
-        val showAddress: Boolean,
-        val showGps: Boolean,
+        /** Serialized StampElements config at capture time (JSON), null on legacy rows. */
+        val elementsJson: String?,
+        val addressMode: String?,
     )
 
     private val indexFile: File get() = File(context.filesDir, "photo_index.json")
@@ -97,8 +98,8 @@ class PhotoIndex(private val context: Context) {
         if (note != null) put("note", note)
         if (activity != null) put("activity", activity)
         if (personName != null) put("personName", personName)
-        put("showAddress", showAddress)
-        put("showGps", showGps)
+        if (elementsJson != null) put("elements", elementsJson)
+        if (addressMode != null) put("addressMode", addressMode)
     }
 
     private fun JSONObject.toRecord() = Record(
@@ -114,7 +115,7 @@ class PhotoIndex(private val context: Context) {
         note = if (isNull("note")) null else getString("note"),
         activity = if (isNull("activity")) null else getString("activity"),
         personName = if (isNull("personName")) null else getString("personName"),
-        showAddress = optBoolean("showAddress", true),
-        showGps = optBoolean("showGps", false),
+        elementsJson = if (isNull("elements")) null else getString("elements"),
+        addressMode = if (isNull("addressMode")) null else getString("addressMode"),
     )
 }
