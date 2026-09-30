@@ -15,6 +15,8 @@ import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.core.resolutionselector.AspectRatioStrategy
+import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.video.Recorder
 import androidx.camera.video.Recording
 import androidx.camera.video.VideoCapture
@@ -24,6 +26,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -160,20 +163,19 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
     var zoomRange by remember { mutableStateOf(0.5f..10f) }
     val videoRecorder = remember { VideoRecorder(context) }
 
-    LaunchedEffect(settings.lensFacingBack, settings.flashMode, settings.videoQuality) {
+    LaunchedEffect(settings.lensFacingBack, settings.videoQuality) {
         val provider = ProcessCameraProvider.getInstance(context).await()
-        val preview = Preview.Builder().build().also {
+        // Lock preview and capture to 4:3 so the viewfinder shows exactly the
+        // frame that lands in the photo — no hidden crop.
+        val resSelector = ResolutionSelector.Builder()
+            .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
+            .build()
+        val preview = Preview.Builder().setResolutionSelector(resSelector).build().also {
             it.setSurfaceProvider(previewView.surfaceProvider)
         }
         val capture = ImageCapture.Builder()
+            .setResolutionSelector(resSelector)
             .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
-            .setFlashMode(
-                when (settings.flashMode) {
-                    AppSettings.FLASH_ON -> ImageCapture.FLASH_MODE_ON
-                    AppSettings.FLASH_AUTO -> ImageCapture.FLASH_MODE_AUTO
-                    else -> ImageCapture.FLASH_MODE_OFF
-                },
-            )
             .build()
         val video = videoRecorder.buildUseCase(settings.videoQuality)
         val selector = CameraSelector.Builder()
@@ -193,6 +195,26 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
             }
         } catch (e: Exception) {
             Toast.makeText(context, "Camera failed: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // Flash toggles apply straight to the use case — no camera rebind needed.
+    LaunchedEffect(settings.flashMode, imageCapture) {
+        imageCapture?.flashMode = when (settings.flashMode) {
+            AppSettings.FLASH_ON -> ImageCapture.FLASH_MODE_ON
+            AppSettings.FLASH_AUTO -> ImageCapture.FLASH_MODE_AUTO
+            else -> ImageCapture.FLASH_MODE_OFF
+        }
+    }
+
+    // Keep the location cache warm while location elements are shown so the
+    // shutter never waits on a GPS fix.
+    LaunchedEffect(settings.elements.address.on, settings.elements.gps.on) {
+        if (settings.elements.address.on || settings.elements.gps.on) {
+            while (true) {
+                LocationStamper.prefetch(context)
+                delay(30_000)
+            }
         }
     }
 
@@ -462,8 +484,10 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
             }
         }
 
-        // Preview area — everything between the app bars never overlaps system UI.
-        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+        // Preview area — the viewfinder is boxed at the capture ratio (4:3)
+        // so what you see is the whole photo, uncropped.
+        Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+        Box(modifier = Modifier.aspectRatio(0.75f).fillMaxSize()) {
         AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
 
         // Rule-of-thirds grid
@@ -567,13 +591,14 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
         }
 
         }
+        }
 
         // Bottom control bar — solid strip clear of the navigation bar.
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(bottom = 12.dp, top = 6.dp),
+                .padding(bottom = 8.dp, top = 4.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             // Photo / Video mode toggle
@@ -602,12 +627,12 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
             SessionChip(
                 label = "${settings.currentSession} · #%03d".format(settings.nextNumber()),
                 onClick = { if (recording == null) showSessions = true },
-                modifier = Modifier.padding(top = 10.dp),
+                modifier = Modifier.padding(top = 8.dp),
             )
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 14.dp),
+                    .padding(top = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceEvenly,
             ) {

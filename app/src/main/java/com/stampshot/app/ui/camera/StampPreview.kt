@@ -73,7 +73,7 @@ fun StampPreview(
     var luminance by remember { mutableDoubleStateOf(0.0) }
     LaunchedEffect(s.style) {
         while (true) {
-            delay(800)
+            delay(1500)
             val frame = previewView.bitmap
             if (frame != null) {
                 val style = s.style

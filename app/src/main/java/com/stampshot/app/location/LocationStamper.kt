@@ -10,7 +10,10 @@ import android.location.LocationManager
 import android.os.Build
 import androidx.core.content.ContextCompat
 import com.stampshot.app.stamp.LocationStamp
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -21,8 +24,18 @@ import kotlin.coroutines.resume
  * Best-effort location + reverse-geocode snapshot for stamping.
  * Uses the platform LocationManager (no Play Services dependency).
  * Everything is optional — returns null pieces when permission/GPS is missing.
+ *
+ * Snapshots are cached briefly: the camera screen prefetches in the background
+ * so taking a photo never waits on GPS — a fresh fix is only awaited when the
+ * cache is stale.
  */
 object LocationStamper {
+
+    private const val CACHE_TTL_MS = 60_000L
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    @Volatile private var cached: LocationStamp? = null
+    @Volatile private var cachedAtMs: Long = 0L
 
     fun hasPermission(context: Context): Boolean {
         val fine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION)
@@ -30,18 +43,40 @@ object LocationStamper {
         return fine == PackageManager.PERMISSION_GRANTED || coarse == PackageManager.PERMISSION_GRANTED
     }
 
-    /** Last cached fix, or a single fresh update within [timeoutMs]. Null if unavailable. */
-    suspend fun snapshot(context: Context, timeoutMs: Long = 5000): LocationStamp? =
+    /** Warms the cache in the background so the next [snapshot] is instant. */
+    fun prefetch(context: Context) {
+        if (!hasPermission(context)) return
+        val appContext = context.applicationContext
+        scope.launch { fetch(appContext, timeoutMs = 5000)?.also { store(it) } }
+    }
+
+    /**
+     * Fresh snapshot: returns the cached fix while it's younger than the TTL,
+     * otherwise awaits a fresh fix up to [timeoutMs]. Null if unavailable.
+     */
+    suspend fun snapshot(context: Context, timeoutMs: Long = 1500): LocationStamp? =
         withContext(Dispatchers.IO) {
             if (!hasPermission(context)) return@withContext null
-            val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-            val location = withTimeoutOrNull(timeoutMs) { freshFix(lm) } ?: lastKnown(lm)
-                ?: return@withContext null
-            val (address, city) = withTimeoutOrNull(4000) {
-                geocode(context, location.latitude, location.longitude)
-            } ?: (null to null)
-            LocationStamp(location, address, city)
+            cached?.takeIf { System.currentTimeMillis() - cachedAtMs < CACHE_TTL_MS }
+                ?.let { return@withContext it }
+            fetch(context, timeoutMs)?.also { store(it) }
         }
+
+    private fun store(stamp: LocationStamp) {
+        cached = stamp
+        cachedAtMs = System.currentTimeMillis()
+    }
+
+    private suspend fun fetch(context: Context, timeoutMs: Long): LocationStamp? {
+        if (!hasPermission(context)) return null
+        val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        val location = withTimeoutOrNull(timeoutMs) { freshFix(lm) } ?: lastKnown(lm)
+            ?: return null
+        val (address, city) = withTimeoutOrNull(4000) {
+            geocode(context, location.latitude, location.longitude)
+        } ?: (null to null)
+        return LocationStamp(location, address, city)
+    }
 
     /** Cheap last-known fix for the live preview — never blocks. */
     fun lastKnown(context: Context): Location? {
