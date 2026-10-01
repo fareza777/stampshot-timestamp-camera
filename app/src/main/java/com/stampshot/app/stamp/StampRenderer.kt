@@ -223,7 +223,7 @@ object StampRenderer {
 
         val rows = info.stampLines().flatMap { l ->
             val p = linePaint(theme, opts, wf, l)
-            wrap(p, l.text, maxTextW, min(l.maxLines, 2)).map { it to p }
+            wrap(p, l.text, maxTextW, l.maxLines).map { it to p }
         }
         if (rows.isEmpty()) return
         val textW = rows.maxOf { (t, p) -> p.measureText(t) }

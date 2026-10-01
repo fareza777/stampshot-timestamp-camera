@@ -241,7 +241,7 @@ data class StampInfo(
             if (els.personName.on) add(StampLine(it, els.personName.side, els.personName.size, bold = false))
         }
         addressLine()?.let {
-            if (els.address.on) add(StampLine(it, els.address.side, els.address.size, bold = false, maxLines = 3))
+            if (els.address.on) add(StampLine(it, els.address.side, els.address.size, bold = false, maxLines = 4))
         }
         gpsLine()?.let {
             if (els.gps.on) add(StampLine(it, els.gps.side, els.gps.size, bold = false))

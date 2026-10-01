@@ -635,11 +635,15 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
                     }
                 }
             }
-            SessionChip(
-                label = "${settings.currentSession} · #%03d".format(settings.nextNumber()),
-                onClick = { if (recording == null) showSessions = true },
-                modifier = Modifier.padding(top = 8.dp),
-            )
+            // The session chip only shows when the title line is part of the stamp —
+            // hidden by default so the controls stay clean. Re-enable via Settings.
+            if (settings.elements.session.on) {
+                SessionChip(
+                    label = "${settings.currentSession} · #%03d".format(settings.nextNumber()),
+                    onClick = { if (recording == null) showSessions = true },
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
