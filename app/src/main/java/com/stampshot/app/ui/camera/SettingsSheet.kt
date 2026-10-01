@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -27,8 +28,10 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -208,32 +211,22 @@ fun SettingsSheet(viewModel: MainViewModel, onDismiss: () -> Unit) {
                 el = els.activity,
             ) { viewModel.setElements(els.copy(activity = it)) }
             if (els.activity.on) {
-                OutlinedTextField(
+                DebouncedTextField(
+                    label = "Activity / kegiatan",
                     value = settings.activity,
-                    onValueChange = { viewModel.setActivity(it) },
-                    label = { Text("Activity / kegiatan") },
-                    placeholder = { Text("e.g. Site inspection, Patroli malam") },
-                    singleLine = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp),
-                )
+                    placeholder = "e.g. Site inspection, Patroli malam",
+                ) { viewModel.setActivity(it) }
             }
             ElementRow(
                 title = "Name",
                 el = els.personName,
             ) { viewModel.setElements(els.copy(personName = it)) }
             if (els.personName.on) {
-                OutlinedTextField(
+                DebouncedTextField(
+                    label = "Name",
                     value = settings.personName,
-                    onValueChange = { viewModel.setPersonName(it) },
-                    label = { Text("Name") },
-                    placeholder = { Text("e.g. Budi Santoso") },
-                    singleLine = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp),
-                )
+                    placeholder = "e.g. Budi Santoso",
+                ) { viewModel.setPersonName(it) }
             }
             ElementRow(
                 title = "Address",
@@ -273,21 +266,23 @@ fun SettingsSheet(viewModel: MainViewModel, onDismiss: () -> Unit) {
                     else viewModel.setElements(els.copy(altitude = els.altitude.copy(on = false)))
                 },
             ) { viewModel.setElements(els.copy(altitude = it)) }
+            if (els.altitude.on) {
+                ChipRow(
+                    label = "Altitude units",
+                    options = listOf(true to "Meters", false to "Feet"),
+                    selected = settings.metricUnits,
+                ) { viewModel.setMetricUnits(it) }
+            }
             ElementRow(
                 title = "Note",
                 el = els.note,
             ) { viewModel.setElements(els.copy(note = it)) }
             if (els.note.on) {
-                OutlinedTextField(
+                DebouncedTextField(
+                    label = "Custom note",
                     value = settings.note,
-                    onValueChange = { viewModel.setNote(it) },
-                    label = { Text("Custom note") },
-                    placeholder = { Text("e.g. Block C, Floor 2") },
-                    singleLine = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp),
-                )
+                    placeholder = "e.g. Block C, Floor 2",
+                ) { viewModel.setNote(it) }
             }
 
             // ---------- Camera ----------
@@ -328,6 +323,17 @@ fun SettingsSheet(viewModel: MainViewModel, onDismiss: () -> Unit) {
                 options = AppSettings.RES_OPTIONS,
                 selected = settings.photoMaxDim,
             ) { viewModel.setPhotoMaxDim(it) }
+            ChipRow(
+                label = "Aspect ratio",
+                options = AppSettings.ASPECT_OPTIONS,
+                selected = settings.photoAspect,
+            ) { viewModel.setPhotoAspect(it) }
+            SliderRow(
+                label = "Exposure",
+                value = (settings.exposureIndex + 8) / 16f,
+                range = 0f..1f,
+                valueLabel = "%+.1f EV".format(settings.exposureIndex * 0.5f),
+            ) { viewModel.setExposureIndex((it * 16 - 8).toInt()) }
             SliderRow(
                 label = "JPEG quality",
                 value = settings.jpegQuality / 100f,
@@ -359,6 +365,29 @@ fun SettingsSheet(viewModel: MainViewModel, onDismiss: () -> Unit) {
                 subtitle = "Stores a clean copy in private app storage so Private/Approximate shares can fully hide stamped location data. Uses extra storage.",
                 checked = settings.keepOriginals,
             ) { viewModel.setKeepOriginals(it) }
+
+            var confirmReset by remember { mutableStateOf(false) }
+            TextButton(
+                onClick = { confirmReset = true },
+                modifier = Modifier.padding(top = 12.dp),
+            ) {
+                Text("Reset all settings", color = MaterialTheme.colorScheme.error)
+            }
+            if (confirmReset) {
+                AlertDialog(
+                    onDismissRequest = { confirmReset = false },
+                    confirmButton = {
+                        TextButton(onClick = { confirmReset = false; viewModel.resetAll() }) {
+                            Text("Reset")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { confirmReset = false }) { Text("Cancel") }
+                    },
+                    title = { Text("Reset all settings?") },
+                    text = { Text("Every preference returns to its default. Photos are not touched.") },
+                )
+            }
 
             Text(
                 "StampShot · offline, no account · photos in Pictures/StampShot",
@@ -491,16 +520,60 @@ private fun ColorRow(
     }
 }
 
+/**
+ * Drags update a local value only — the change is committed (and written to
+ * DataStore) once on release, so dragging stays butter-smooth.
+ */
 @Composable
-private fun SliderRow(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit) {
+private fun SliderRow(
+    label: String,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    valueLabel: String? = null,
+    onChange: (Float) -> Unit,
+) {
+    var dragging by remember { mutableStateOf<Float?>(null) }
+    val shown = dragging ?: value
     Column(modifier = Modifier.padding(top = 6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("%d%%".format((value * 100).toInt()), style = MaterialTheme.typography.labelMedium)
+            Text(valueLabel ?: "%d%%".format((shown * 100).toInt()), style = MaterialTheme.typography.labelMedium)
         }
-        Slider(value = value, onValueChange = onChange, valueRange = range)
+        Slider(
+            value = shown,
+            onValueChange = { dragging = it },
+            onValueChangeFinished = { dragging?.let(onChange); dragging = null },
+            valueRange = range,
+        )
     }
+}
+
+/** Text field that writes back only after typing settles — no write per keystroke. */
+@Composable
+private fun DebouncedTextField(
+    label: String,
+    value: String,
+    placeholder: String,
+    onCommit: (String) -> Unit,
+) {
+    var text by remember(value) { mutableStateOf(value) }
+    LaunchedEffect(text) {
+        if (text != value) {
+            kotlinx.coroutines.delay(400)
+            onCommit(text)
+        }
+    }
+    OutlinedTextField(
+        value = text,
+        onValueChange = { text = it },
+        label = { Text(label) },
+        placeholder = { Text(placeholder) },
+        singleLine = true,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp),
+    )
 }
 
 @Composable

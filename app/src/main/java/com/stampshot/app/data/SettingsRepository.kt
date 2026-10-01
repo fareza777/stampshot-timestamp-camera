@@ -37,7 +37,7 @@ data class AppSettings(
     val keepOriginals: Boolean = true,
     // Stamp appearance
     val fontScale: Float = 1f,
-    val fontColorArgb: Int = -1,
+    val fontColorArgb: Int = 0xFFFFFFFF.toInt(),
     val bgColorArgb: Int = -1,
     val textOpacity: Float = 1f,
     val bgOpacity: Float = 0.62f,
@@ -58,6 +58,9 @@ data class AppSettings(
     val touchToCapture: Boolean = false,
     val mirrorFront: Boolean = true,
     val photoMaxDim: Int = 0,
+    val photoAspect: Int = ASPECT_4_3,
+    val exposureIndex: Int = 0,
+    val metricUnits: Boolean = true,
     val jpegQuality: Int = 92,
     val fastCapture: Boolean = true,
     val volumeKeysCapture: Boolean = true,
@@ -75,6 +78,9 @@ data class AppSettings(
         const val FLASH_OFF = 0
         const val FLASH_ON = 1
         const val FLASH_AUTO = 2
+        const val ASPECT_4_3 = 0
+        const val ASPECT_16_9 = 1
+        val ASPECT_OPTIONS = listOf(ASPECT_4_3 to "4:3", ASPECT_16_9 to "16:9")
         const val VIDEO_SD = 0
         const val VIDEO_HD = 1
         const val VIDEO_FHD = 2
@@ -135,6 +141,9 @@ class SettingsRepository(private val context: Context) {
         val TOUCH_CAPTURE = booleanPreferencesKey("touch_capture")
         val MIRROR_FRONT = booleanPreferencesKey("mirror_front")
         val PHOTO_MAX_DIM = intPreferencesKey("photo_max_dim")
+        val PHOTO_ASPECT = intPreferencesKey("photo_aspect")
+        val EXPOSURE_INDEX = intPreferencesKey("exposure_index")
+        val METRIC_UNITS = booleanPreferencesKey("metric_units")
         val JPEG_QUALITY = intPreferencesKey("jpeg_quality")
         val FAST_CAPTURE = booleanPreferencesKey("fast_capture")
         val VOLUME_KEYS = booleanPreferencesKey("volume_keys_capture")
@@ -166,7 +175,7 @@ class SettingsRepository(private val context: Context) {
                 ?: PrivacyLevel.FULL,
             keepOriginals = p[K.KEEP_ORIGINALS] ?: true,
             fontScale = p[K.FONT_SCALE] ?: 1f,
-            fontColorArgb = p[K.FONT_COLOR] ?: -1,
+            fontColorArgb = p[K.FONT_COLOR] ?: 0xFFFFFFFF.toInt(),
             bgColorArgb = p[K.BG_COLOR] ?: -1,
             textOpacity = p[K.TEXT_OPACITY] ?: 1f,
             bgOpacity = p[K.BG_OPACITY] ?: 0.62f,
@@ -195,6 +204,9 @@ class SettingsRepository(private val context: Context) {
             touchToCapture = p[K.TOUCH_CAPTURE] ?: false,
             mirrorFront = p[K.MIRROR_FRONT] ?: true,
             photoMaxDim = p[K.PHOTO_MAX_DIM] ?: 0,
+            photoAspect = p[K.PHOTO_ASPECT] ?: AppSettings.ASPECT_4_3,
+            exposureIndex = p[K.EXPOSURE_INDEX] ?: 0,
+            metricUnits = p[K.METRIC_UNITS] ?: true,
             jpegQuality = p[K.JPEG_QUALITY] ?: 92,
             fastCapture = p[K.FAST_CAPTURE] ?: true,
             volumeKeysCapture = p[K.VOLUME_KEYS] ?: true,
@@ -235,6 +247,9 @@ class SettingsRepository(private val context: Context) {
     suspend fun setTouchToCapture(v: Boolean) = put(K.TOUCH_CAPTURE, v)
     suspend fun setMirrorFront(v: Boolean) = put(K.MIRROR_FRONT, v)
     suspend fun setPhotoMaxDim(v: Int) = put(K.PHOTO_MAX_DIM, v)
+    suspend fun setPhotoAspect(v: Int) = put(K.PHOTO_ASPECT, v)
+    suspend fun setExposureIndex(v: Int) = put(K.EXPOSURE_INDEX, v.coerceIn(-8, 8))
+    suspend fun setMetricUnits(v: Boolean) = put(K.METRIC_UNITS, v)
     suspend fun setJpegQuality(v: Int) = put(K.JPEG_QUALITY, v.coerceIn(60, 100))
     suspend fun setFastCapture(v: Boolean) = put(K.FAST_CAPTURE, v)
     suspend fun setVolumeKeysCapture(v: Boolean) = put(K.VOLUME_KEYS, v)
@@ -243,6 +258,11 @@ class SettingsRepository(private val context: Context) {
     suspend fun setTime24h(v: Boolean) = put(K.TIME_24H, v)
     suspend fun setVideoQuality(v: Int) = put(K.VIDEO_QUALITY, v)
     suspend fun setVideoAudio(v: Boolean) = put(K.VIDEO_AUDIO, v)
+
+    /** Clears every stored preference back to factory defaults. */
+    suspend fun resetAll() {
+        context.settingsStore.edit { it.clear() }
+    }
 
     suspend fun setSession(name: String) {
         val clean = name.trim().ifBlank { AppSettings.DEFAULT_SESSION }

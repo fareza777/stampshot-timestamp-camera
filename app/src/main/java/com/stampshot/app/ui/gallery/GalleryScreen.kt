@@ -214,6 +214,7 @@ fun GalleryScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                             font = settings.stampFont,
                             transparent = settings.stampTransparent,
                         ),
+                        altImperial = !settings.metricUnits,
                     )
                     if (result.fellBackToPixelsOnly) {
                         Toast.makeText(

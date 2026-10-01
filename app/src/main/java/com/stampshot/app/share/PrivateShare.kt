@@ -42,6 +42,7 @@ object PrivateShare {
         style: StampStyle,
         options: StampOptions = StampOptions(),
         isVideo: Boolean = false,
+        altImperial: Boolean = false,
     ): ShareResult = withContext(Dispatchers.IO) {
         try {
             when {
@@ -52,7 +53,7 @@ object PrivateShare {
                 }
                 else -> {
                     val record = PhotoIndex(context).get(displayName)
-                    val variant = renderVariant(context, photoUri, displayName, record, level, style, options)
+                    val variant = renderVariant(context, photoUri, displayName, record, level, style, options, altImperial)
                     launchShare(context, variant, "image/jpeg")
                     ShareResult(
                         launched = true,
@@ -78,6 +79,7 @@ object PrivateShare {
         level: PrivacyLevel,
         style: StampStyle,
         options: StampOptions,
+        altImperial: Boolean,
     ): Uri {
         val outFile = File(File(context.cacheDir, "shared").apply { mkdirs() },
             "share_${level.name.lowercase()}_${System.currentTimeMillis()}.jpg")
@@ -88,7 +90,7 @@ object PrivateShare {
         if (originalFile != null && originalFile.exists()) {
             val clean = BitmapFactory.decodeFile(originalFile.absolutePath)
                 ?: error("Could not decode kept original")
-            val info = recordToInfo(record).reduced(level)
+            val info = recordToInfo(record, altImperial).reduced(level)
             bitmap = StampRenderer.render(clean, info, style, options)
             clean.recycle()
             recycled = true
@@ -103,7 +105,7 @@ object PrivateShare {
         return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", outFile)
     }
 
-    private fun recordToInfo(r: PhotoIndex.Record): StampInfo = StampInfo(
+    private fun recordToInfo(r: PhotoIndex.Record, altImperial: Boolean): StampInfo = StampInfo(
         timestampMillis = r.timestampMillis,
         sessionName = r.session,
         photoNumber = r.number,
@@ -115,6 +117,7 @@ object PrivateShare {
         latitude = r.latitude,
         longitude = r.longitude,
         altitude = r.altitude,
+        altImperial = altImperial,
         elements = StampElements.fromJson(r.elementsJson),
         addressMode = r.addressMode?.let {
             runCatching { AddressMode.valueOf(it) }.getOrNull()

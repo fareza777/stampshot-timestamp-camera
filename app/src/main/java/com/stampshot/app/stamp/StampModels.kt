@@ -154,6 +154,7 @@ data class StampInfo(
     val latitude: Double? = null,
     val longitude: Double? = null,
     val altitude: Double? = null,
+    val altImperial: Boolean = false,
     val showNumber: Boolean = true,
     val elements: StampElements = StampElements(),
     val addressMode: AddressMode = AddressMode.FULL,
@@ -213,7 +214,10 @@ data class StampInfo(
     }
 
     fun altLine(): String? =
-        altitude?.let { "Alt: %.0f m".format(Locale.US, it) }
+        altitude?.let {
+            if (altImperial) "Alt: %.0f ft".format(Locale.US, it * 3.28084)
+            else "Alt: %.0f m".format(Locale.US, it)
+        }
 
     fun noteLine(): String? = note?.takeIf { it.isNotBlank() }
 

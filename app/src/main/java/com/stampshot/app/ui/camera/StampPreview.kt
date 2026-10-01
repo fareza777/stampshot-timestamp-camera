@@ -110,6 +110,7 @@ fun StampPreview(
         latitude = loc?.location?.latitude,
         longitude = loc?.location?.longitude,
         altitude = loc?.location?.altitude,
+        altImperial = !s.metricUnits,
         showNumber = s.showNumber,
         elements = els,
         addressMode = s.addressMode,

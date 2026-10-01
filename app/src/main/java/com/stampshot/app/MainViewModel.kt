@@ -63,6 +63,10 @@ class MainViewModel(val repo: SettingsRepository) : ViewModel() {
     fun setPhotoMaxDim(v: Int) = viewModelScope.launch { repo.setPhotoMaxDim(v) }
     fun setJpegQuality(v: Int) = viewModelScope.launch { repo.setJpegQuality(v) }
     fun setFastCapture(v: Boolean) = viewModelScope.launch { repo.setFastCapture(v) }
+    fun setPhotoAspect(v: Int) = viewModelScope.launch { repo.setPhotoAspect(v) }
+    fun setExposureIndex(v: Int) = viewModelScope.launch { repo.setExposureIndex(v) }
+    fun setMetricUnits(v: Boolean) = viewModelScope.launch { repo.setMetricUnits(v) }
+    fun resetAll() = viewModelScope.launch { repo.resetAll() }
     fun setVolumeKeysCapture(v: Boolean) = viewModelScope.launch { repo.setVolumeKeysCapture(v) }
     fun setKeepScreenOn(v: Boolean) = viewModelScope.launch { repo.setKeepScreenOn(v) }
     fun setShowSeconds(v: Boolean) = viewModelScope.launch { repo.setShowSeconds(v) }

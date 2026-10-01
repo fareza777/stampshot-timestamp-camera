@@ -169,12 +169,18 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
     var zoomRange by remember { mutableStateOf(0.5f..10f) }
     val videoRecorder = remember { VideoRecorder(context) }
 
-    LaunchedEffect(settings.lensFacingBack, settings.videoQuality, settings.fastCapture) {
+    LaunchedEffect(settings.lensFacingBack, settings.videoQuality, settings.fastCapture, settings.photoAspect) {
         val provider = ProcessCameraProvider.getInstance(context).await()
-        // Lock preview and capture to 4:3 so the viewfinder shows exactly the
-        // frame that lands in the photo — no hidden crop.
+        // Lock preview and capture to the chosen ratio so the viewfinder shows
+        // exactly the frame that lands in the photo — no hidden crop.
         val resSelector = ResolutionSelector.Builder()
-            .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
+            .setAspectRatioStrategy(
+                if (settings.photoAspect == AppSettings.ASPECT_16_9) {
+                    AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY
+                } else {
+                    AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY
+                },
+            )
             .build()
         val preview = Preview.Builder().setResolutionSelector(resSelector).build().also {
             it.setSurfaceProvider(previewView.surfaceProvider)
@@ -205,6 +211,13 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
         } catch (e: Exception) {
             Toast.makeText(context, "Camera failed: ${e.message}", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    // Exposure compensation applies straight to the bound camera — no rebind.
+    LaunchedEffect(settings.exposureIndex, camera) {
+        val cam = camera ?: return@LaunchedEffect
+        val range = cam.cameraInfo.exposureState.exposureCompensationRange
+        cam.cameraControl.setExposureCompensationIndex(range.clamp(settings.exposureIndex))
     }
 
     // Flash toggles apply straight to the use case — no camera rebind needed.
@@ -279,6 +292,7 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
             latitude = loc?.location?.latitude,
             longitude = loc?.location?.longitude,
             altitude = loc?.location?.altitude,
+            altImperial = !s.metricUnits,
             showNumber = s.showNumber,
             elements = s.elements,
             addressMode = s.addressMode,
@@ -498,7 +512,11 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
         // Preview area — the viewfinder is boxed at the capture ratio (4:3)
         // so what you see is the whole photo, uncropped.
         Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-        Box(modifier = Modifier.aspectRatio(0.75f).fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .aspectRatio(if (settings.photoAspect == AppSettings.ASPECT_16_9) 9f / 16f else 0.75f)
+                .fillMaxSize(),
+        ) {
         AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
 
         // Rule-of-thirds grid
