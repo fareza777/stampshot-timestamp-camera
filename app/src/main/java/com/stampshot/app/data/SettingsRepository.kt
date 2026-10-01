@@ -43,7 +43,7 @@ data class AppSettings(
     val bgOpacity: Float = 0.62f,
     val stampPosition: StampPosition = StampPosition.BOTTOM_RIGHT,
     val stampFont: StampFont = StampFont.DEFAULT,
-    val stampTransparent: Boolean = false,
+    val stampTransparent: Boolean = true,
     val elements: StampElements = StampElements(),
     val addressMode: AddressMode = AddressMode.FULL,
     val activity: String = "",
@@ -59,7 +59,7 @@ data class AppSettings(
     val mirrorFront: Boolean = true,
     val photoMaxDim: Int = 0,
     val jpegQuality: Int = 92,
-    val fastCapture: Boolean = false,
+    val fastCapture: Boolean = true,
     val volumeKeysCapture: Boolean = true,
     val keepScreenOn: Boolean = true,
     val showSeconds: Boolean = true,
@@ -174,8 +174,12 @@ class SettingsRepository(private val context: Context) {
                 ?: StampPosition.BOTTOM_RIGHT,
             stampFont = p[K.FONT]?.let { runCatching { StampFont.valueOf(it) }.getOrNull() }
                 ?: StampFont.DEFAULT,
-            stampTransparent = p[K.TRANSPARENT] ?: false,
-            elements = StampElements.fromJson(p[K.ELEMENTS], legacyElements),
+            stampTransparent = p[K.TRANSPARENT] ?: true,
+            // Users who never customized elements get the refreshed defaults
+            // (no session/title line); anyone with a custom config keeps it.
+            elements = StampElements.fromJson(p[K.ELEMENTS], legacyElements).let {
+                if (it == V7_DEFAULT_ELEMENTS) StampElements() else it
+            },
             addressMode = p[K.ADDRESS_MODE]?.let { runCatching { AddressMode.valueOf(it) }.getOrNull() }
                 ?: AddressMode.FULL,
             activity = p[K.ACTIVITY] ?: "",
@@ -192,7 +196,7 @@ class SettingsRepository(private val context: Context) {
             mirrorFront = p[K.MIRROR_FRONT] ?: true,
             photoMaxDim = p[K.PHOTO_MAX_DIM] ?: 0,
             jpegQuality = p[K.JPEG_QUALITY] ?: 92,
-            fastCapture = p[K.FAST_CAPTURE] ?: false,
+            fastCapture = p[K.FAST_CAPTURE] ?: true,
             volumeKeysCapture = p[K.VOLUME_KEYS] ?: true,
             keepScreenOn = p[K.KEEP_SCREEN_ON] ?: true,
             showSeconds = p[K.SHOW_SECONDS] ?: true,
@@ -288,7 +292,7 @@ class SettingsRepository(private val context: Context) {
         return StampElements(
             date = El(side = align),
             time = El(side = align),
-            session = El(side = align),
+            session = El(side = align, on = false),
             activity = El(side = align),
             personName = El(side = align),
             address = El(side = detailSide, on = showAddress),
@@ -297,6 +301,9 @@ class SettingsRepository(private val context: Context) {
             note = El(side = detailSide),
         )
     }
+
+    /** The shipped defaults before v8 — session/title line on, stamp boxed. */
+    private val V7_DEFAULT_ELEMENTS = StampElements().copy(session = El())
 
     private fun parseCounterMap(json: String?): Map<String, Int> {
         if (json.isNullOrBlank()) return emptyMap()

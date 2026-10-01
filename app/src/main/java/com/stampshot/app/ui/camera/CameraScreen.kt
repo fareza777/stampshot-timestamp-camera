@@ -155,7 +155,13 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
     }
 
     // ---------- CameraX binding ----------
-    val previewView = remember { PreviewView(context).apply { scaleType = PreviewView.ScaleType.FILL_CENTER } }
+    val previewView = remember {
+        PreviewView(context).apply {
+            scaleType = PreviewView.ScaleType.FILL_CENTER
+            // SurfaceView-backed rendering — the smoothest preview path.
+            implementationMode = PreviewView.ImplementationMode.PERFORMANCE
+        }
+    }
     var camera by remember { mutableStateOf<Camera?>(null) }
     var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
     var videoCapture by remember { mutableStateOf<VideoCapture<Recorder>?>(null) }

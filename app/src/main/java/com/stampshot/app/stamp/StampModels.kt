@@ -77,7 +77,7 @@ data class El(
 data class StampElements(
     val date: El = El(),
     val time: El = El(),
-    val session: El = El(),
+    val session: El = El(on = false),
     val activity: El = El(),
     val personName: El = El(),
     val address: El = El(side = StampAlign.RIGHT),
