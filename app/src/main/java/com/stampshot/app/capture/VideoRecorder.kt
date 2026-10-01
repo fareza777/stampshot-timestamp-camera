@@ -122,6 +122,7 @@ class VideoRecorder(private val context: Context) {
                 originalPath = null,
                 latitude = info.latitude,
                 longitude = info.longitude,
+                altitude = info.altitude,
                 address = info.address,
                 city = info.city,
                 note = info.note,

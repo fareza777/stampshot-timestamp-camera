@@ -92,8 +92,8 @@ fun StampPreview(
     // Live location for the preview — resolves the real address so the stamp
     // shows exactly what a photo will get (refreshed at capture anyway).
     var loc by remember { mutableStateOf<LocationStamp?>(null) }
-    LaunchedEffect(els.address.on, els.gps.on) {
-        loc = if ((els.address.on || els.gps.on) && LocationStamper.hasPermission(context)) {
+    LaunchedEffect(els.address.on, els.gps.on, els.altitude.on) {
+        loc = if ((els.address.on || els.gps.on || els.altitude.on) && LocationStamper.hasPermission(context)) {
             LocationStamper.snapshot(context, timeoutMs = 3000)
         } else null
     }
@@ -109,6 +109,7 @@ fun StampPreview(
         city = loc?.city,
         latitude = loc?.location?.latitude,
         longitude = loc?.location?.longitude,
+        altitude = loc?.location?.altitude,
         showNumber = s.showNumber,
         elements = els,
         addressMode = s.addressMode,
@@ -293,7 +294,8 @@ private fun StampLines(
     val align = if (alignRight) androidx.compose.ui.text.style.TextAlign.End
         else androidx.compose.ui.text.style.TextAlign.Start
     lines.forEach { line ->
-        val sp = (if (line.bold) primarySp else secondarySp) * line.size.scale
+        // One uniform size for all elements; bold affects weight only.
+        val sp = primarySp * line.size.scale
         Text(
             line.text,
             color = if (line.bold) text else textDim,

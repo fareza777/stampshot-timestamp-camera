@@ -23,6 +23,7 @@ class PhotoIndex(private val context: Context) {
         val originalPath: String?,
         val latitude: Double?,
         val longitude: Double?,
+        val altitude: Double?,
         val address: String?,
         val city: String?,
         val note: String?,
@@ -93,6 +94,7 @@ class PhotoIndex(private val context: Context) {
         put("orig", originalPath)
         if (latitude != null) put("lat", latitude)
         if (longitude != null) put("lon", longitude)
+        if (altitude != null) put("alt", altitude)
         if (address != null) put("address", address)
         if (city != null) put("city", city)
         if (note != null) put("note", note)
@@ -110,6 +112,7 @@ class PhotoIndex(private val context: Context) {
         originalPath = if (isNull("orig")) null else optString("orig"),
         latitude = if (has("lat")) getDouble("lat") else null,
         longitude = if (has("lon")) getDouble("lon") else null,
+        altitude = if (has("alt")) getDouble("alt") else null,
         address = if (isNull("address")) null else getString("address"),
         city = if (isNull("city")) null else getString("city"),
         note = if (isNull("note")) null else getString("note"),

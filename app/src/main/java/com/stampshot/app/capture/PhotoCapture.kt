@@ -48,6 +48,7 @@ class PhotoCapture(private val context: Context) {
         options: StampOptions = StampOptions(),
         mirror: Boolean = false,
         maxDim: Int = 0,
+        jpegQuality: Int = 92,
     ): SavedPhoto = withContext(Dispatchers.IO) {
         val raw = File(context.cacheDir, "cap_${System.currentTimeMillis()}.jpg")
         try {
@@ -70,7 +71,7 @@ class PhotoCapture(private val context: Context) {
             val stamped = StampRenderer.render(captured, info, style, options)
 
             val displayName = buildFileName(info)
-            val uri = saveToMediaStore(displayName, stamped)
+            val uri = saveToMediaStore(displayName, stamped, jpegQuality)
 
             val keep = keepOriginal && info.hasSensitiveContent()
             var originalPath: String? = null
@@ -93,6 +94,7 @@ class PhotoCapture(private val context: Context) {
                     originalPath = originalPath,
                     latitude = info.latitude,
                     longitude = info.longitude,
+                    altitude = info.altitude,
                     address = info.address,
                     city = info.city,
                     note = info.note,
@@ -149,7 +151,7 @@ class PhotoCapture(private val context: Context) {
     private fun buildFileName(info: StampInfo): String =
         stampShotFileName(info.sessionName, info.photoNumber, info.timestampMillis, "jpg")
 
-    private fun saveToMediaStore(displayName: String, bitmap: Bitmap): Uri {
+    private fun saveToMediaStore(displayName: String, bitmap: Bitmap, jpegQuality: Int): Uri {
         val resolver = context.contentResolver
         val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
@@ -166,7 +168,7 @@ class PhotoCapture(private val context: Context) {
         }
         val uri = resolver.insert(collection, values) ?: error("MediaStore insert failed")
         resolver.openOutputStream(uri, "w")?.use { out ->
-            if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)) error("JPEG compress failed")
+            if (!bitmap.compress(Bitmap.CompressFormat.JPEG, jpegQuality, out)) error("JPEG compress failed")
         } ?: error("Could not open $uri for writing")
 
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {

@@ -163,7 +163,7 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
     var zoomRange by remember { mutableStateOf(0.5f..10f) }
     val videoRecorder = remember { VideoRecorder(context) }
 
-    LaunchedEffect(settings.lensFacingBack, settings.videoQuality) {
+    LaunchedEffect(settings.lensFacingBack, settings.videoQuality, settings.fastCapture) {
         val provider = ProcessCameraProvider.getInstance(context).await()
         // Lock preview and capture to 4:3 so the viewfinder shows exactly the
         // frame that lands in the photo — no hidden crop.
@@ -175,7 +175,10 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
         }
         val capture = ImageCapture.Builder()
             .setResolutionSelector(resSelector)
-            .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
+            .setCaptureMode(
+                if (settings.fastCapture) ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY
+                else ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY,
+            )
             .build()
         val video = videoRecorder.buildUseCase(settings.videoQuality)
         val selector = CameraSelector.Builder()
@@ -209,8 +212,8 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
 
     // Keep the location cache warm while location elements are shown so the
     // shutter never waits on a GPS fix.
-    LaunchedEffect(settings.elements.address.on, settings.elements.gps.on) {
-        if (settings.elements.address.on || settings.elements.gps.on) {
+    LaunchedEffect(settings.elements.address.on, settings.elements.gps.on, settings.elements.altitude.on) {
+        if (settings.elements.address.on || settings.elements.gps.on || settings.elements.altitude.on) {
             while (true) {
                 LocationStamper.prefetch(context)
                 delay(30_000)
@@ -254,7 +257,7 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
 
     suspend fun stampInfoFor(s: AppSettings): StampInfo {
         val number = viewModel.repo.nextNumber(s.currentSession)
-        val needsLocation = s.elements.address.on || s.elements.gps.on
+        val needsLocation = s.elements.address.on || s.elements.gps.on || s.elements.altitude.on
         val loc = if (needsLocation && LocationStamper.hasPermission(context)) {
             LocationStamper.snapshot(context)
         } else null
@@ -269,6 +272,7 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
             city = loc?.city,
             latitude = loc?.location?.latitude,
             longitude = loc?.location?.longitude,
+            altitude = loc?.location?.altitude,
             showNumber = s.showNumber,
             elements = s.elements,
             addressMode = s.addressMode,
@@ -301,6 +305,7 @@ fun CameraScreen(viewModel: MainViewModel, onOpenGallery: () -> Unit) {
                     options = stampOptionsOf(s),
                     mirror = s.mirrorFront && !s.lensFacingBack,
                     maxDim = s.photoMaxDim,
+                    jpegQuality = s.jpegQuality,
                 )
                 Toast.makeText(context, "Saved photo #%03d".format(saved.number), Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {

@@ -81,7 +81,8 @@ data class StampElements(
     val activity: El = El(),
     val personName: El = El(),
     val address: El = El(side = StampAlign.RIGHT),
-    val gps: El = El(side = StampAlign.RIGHT, on = false),
+    val gps: El = El(side = StampAlign.RIGHT),
+    val altitude: El = El(side = StampAlign.RIGHT, on = false),
     val note: El = El(side = StampAlign.RIGHT),
 ) {
     fun toJson(): String = JSONObject().apply {
@@ -92,6 +93,7 @@ data class StampElements(
         put("personName", personName.toJson())
         put("address", address.toJson())
         put("gps", gps.toJson())
+        put("altitude", altitude.toJson())
         put("note", note.toJson())
     }.toString()
 
@@ -106,6 +108,7 @@ data class StampElements(
                 personName = El.fromJson(o.optJSONObject("personName"), defaults.personName),
                 address = El.fromJson(o.optJSONObject("address"), defaults.address),
                 gps = El.fromJson(o.optJSONObject("gps"), defaults.gps),
+                altitude = El.fromJson(o.optJSONObject("altitude"), defaults.altitude),
                 note = El.fromJson(o.optJSONObject("note"), defaults.note),
             )
         }
@@ -150,6 +153,7 @@ data class StampInfo(
     val city: String? = null,
     val latitude: Double? = null,
     val longitude: Double? = null,
+    val altitude: Double? = null,
     val showNumber: Boolean = true,
     val elements: StampElements = StampElements(),
     val addressMode: AddressMode = AddressMode.FULL,
@@ -208,6 +212,9 @@ data class StampInfo(
         return "$d°$m'$s\"$dir"
     }
 
+    fun altLine(): String? =
+        altitude?.let { "Alt: %.0f m".format(Locale.US, it) }
+
     fun noteLine(): String? = note?.takeIf { it.isNotBlank() }
 
     fun activityLine(): String? = activity?.takeIf { it.isNotBlank() }?.let { "Activity: $it" }
@@ -239,6 +246,9 @@ data class StampInfo(
         gpsLine()?.let {
             if (els.gps.on) add(StampLine(it, els.gps.side, els.gps.size, bold = false))
         }
+        altLine()?.let {
+            if (els.altitude.on) add(StampLine(it, els.altitude.side, els.altitude.size, bold = false))
+        }
         noteLine()?.let {
             if (els.note.on) add(StampLine(it, els.note.side, els.note.size, bold = false))
         }
@@ -253,11 +263,11 @@ data class StampInfo(
         PrivacyLevel.FULL -> this
         PrivacyLevel.APPROXIMATE -> copy(
             address = null, addressMode = AddressMode.CITY,
-            latitude = null, longitude = null,
+            latitude = null, longitude = null, altitude = null,
         )
         PrivacyLevel.PRIVATE -> copy(
             address = null, city = null,
-            latitude = null, longitude = null,
+            latitude = null, longitude = null, altitude = null,
             note = null,
         )
     }
@@ -265,7 +275,8 @@ data class StampInfo(
     /** True when the stamp leaks location info a private share would need to re-render. */
     fun hasSensitiveContent(): Boolean =
         (elements.address.on && addressLine() != null) ||
-            (elements.gps.on && gpsLine() != null)
+            (elements.gps.on && gpsLine() != null) ||
+            (elements.altitude.on && altLine() != null)
 
     companion object {
         val FILE_TS_FMT = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)

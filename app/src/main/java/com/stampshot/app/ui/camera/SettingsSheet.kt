@@ -266,6 +266,14 @@ fun SettingsSheet(viewModel: MainViewModel, onDismiss: () -> Unit) {
                 ) { viewModel.setGpsFormat(it) }
             }
             ElementRow(
+                title = "Altitude",
+                el = els.altitude,
+                onToggle = { on ->
+                    if (on) enableLocationToggle { viewModel.setElements(els.copy(altitude = els.altitude.copy(on = true))) }
+                    else viewModel.setElements(els.copy(altitude = els.altitude.copy(on = false)))
+                },
+            ) { viewModel.setElements(els.copy(altitude = it)) }
+            ElementRow(
                 title = "Note",
                 el = els.note,
             ) { viewModel.setElements(els.copy(note = it)) }
@@ -320,6 +328,16 @@ fun SettingsSheet(viewModel: MainViewModel, onDismiss: () -> Unit) {
                 options = AppSettings.RES_OPTIONS,
                 selected = settings.photoMaxDim,
             ) { viewModel.setPhotoMaxDim(it) }
+            SliderRow(
+                label = "JPEG quality",
+                value = settings.jpegQuality / 100f,
+                range = 0.6f..1f,
+            ) { viewModel.setJpegQuality((it * 100).toInt()) }
+            ChipRow(
+                label = "Capture speed",
+                options = listOf(false to "High quality", true to "Fast"),
+                selected = settings.fastCapture,
+            ) { viewModel.setFastCapture(it) }
 
             // ---------- Video ----------
             SectionHeader("Video")

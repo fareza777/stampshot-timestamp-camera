@@ -61,6 +61,8 @@ class MainViewModel(val repo: SettingsRepository) : ViewModel() {
     fun setTouchToCapture(v: Boolean) = viewModelScope.launch { repo.setTouchToCapture(v) }
     fun setMirrorFront(v: Boolean) = viewModelScope.launch { repo.setMirrorFront(v) }
     fun setPhotoMaxDim(v: Int) = viewModelScope.launch { repo.setPhotoMaxDim(v) }
+    fun setJpegQuality(v: Int) = viewModelScope.launch { repo.setJpegQuality(v) }
+    fun setFastCapture(v: Boolean) = viewModelScope.launch { repo.setFastCapture(v) }
     fun setVolumeKeysCapture(v: Boolean) = viewModelScope.launch { repo.setVolumeKeysCapture(v) }
     fun setKeepScreenOn(v: Boolean) = viewModelScope.launch { repo.setKeepScreenOn(v) }
     fun setShowSeconds(v: Boolean) = viewModelScope.launch { repo.setShowSeconds(v) }

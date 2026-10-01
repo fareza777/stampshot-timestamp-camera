@@ -41,7 +41,7 @@ data class AppSettings(
     val bgColorArgb: Int = -1,
     val textOpacity: Float = 1f,
     val bgOpacity: Float = 0.62f,
-    val stampPosition: StampPosition = StampPosition.BOTTOM_LEFT,
+    val stampPosition: StampPosition = StampPosition.BOTTOM_RIGHT,
     val stampFont: StampFont = StampFont.DEFAULT,
     val stampTransparent: Boolean = false,
     val elements: StampElements = StampElements(),
@@ -58,6 +58,8 @@ data class AppSettings(
     val touchToCapture: Boolean = false,
     val mirrorFront: Boolean = true,
     val photoMaxDim: Int = 0,
+    val jpegQuality: Int = 92,
+    val fastCapture: Boolean = false,
     val volumeKeysCapture: Boolean = true,
     val keepScreenOn: Boolean = true,
     val showSeconds: Boolean = true,
@@ -133,6 +135,8 @@ class SettingsRepository(private val context: Context) {
         val TOUCH_CAPTURE = booleanPreferencesKey("touch_capture")
         val MIRROR_FRONT = booleanPreferencesKey("mirror_front")
         val PHOTO_MAX_DIM = intPreferencesKey("photo_max_dim")
+        val JPEG_QUALITY = intPreferencesKey("jpeg_quality")
+        val FAST_CAPTURE = booleanPreferencesKey("fast_capture")
         val VOLUME_KEYS = booleanPreferencesKey("volume_keys_capture")
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
         val SHOW_SECONDS = booleanPreferencesKey("show_seconds")
@@ -147,7 +151,7 @@ class SettingsRepository(private val context: Context) {
         val legacyElements = seedElements(
             align = legacyAlign,
             showAddress = p[K.SHOW_ADDRESS] ?: true,
-            showGps = p[K.SHOW_GPS] ?: false,
+            showGps = p[K.SHOW_GPS] ?: true,
         )
         AppSettings(
             style = p[K.STYLE]?.let { runCatching { StampStyle.valueOf(it) }.getOrNull() }
@@ -167,7 +171,7 @@ class SettingsRepository(private val context: Context) {
             textOpacity = p[K.TEXT_OPACITY] ?: 1f,
             bgOpacity = p[K.BG_OPACITY] ?: 0.62f,
             stampPosition = p[K.POSITION]?.let { runCatching { StampPosition.valueOf(it) }.getOrNull() }
-                ?: StampPosition.BOTTOM_LEFT,
+                ?: StampPosition.BOTTOM_RIGHT,
             stampFont = p[K.FONT]?.let { runCatching { StampFont.valueOf(it) }.getOrNull() }
                 ?: StampFont.DEFAULT,
             stampTransparent = p[K.TRANSPARENT] ?: false,
@@ -187,6 +191,8 @@ class SettingsRepository(private val context: Context) {
             touchToCapture = p[K.TOUCH_CAPTURE] ?: false,
             mirrorFront = p[K.MIRROR_FRONT] ?: true,
             photoMaxDim = p[K.PHOTO_MAX_DIM] ?: 0,
+            jpegQuality = p[K.JPEG_QUALITY] ?: 92,
+            fastCapture = p[K.FAST_CAPTURE] ?: false,
             volumeKeysCapture = p[K.VOLUME_KEYS] ?: true,
             keepScreenOn = p[K.KEEP_SCREEN_ON] ?: true,
             showSeconds = p[K.SHOW_SECONDS] ?: true,
@@ -225,6 +231,8 @@ class SettingsRepository(private val context: Context) {
     suspend fun setTouchToCapture(v: Boolean) = put(K.TOUCH_CAPTURE, v)
     suspend fun setMirrorFront(v: Boolean) = put(K.MIRROR_FRONT, v)
     suspend fun setPhotoMaxDim(v: Int) = put(K.PHOTO_MAX_DIM, v)
+    suspend fun setJpegQuality(v: Int) = put(K.JPEG_QUALITY, v.coerceIn(60, 100))
+    suspend fun setFastCapture(v: Boolean) = put(K.FAST_CAPTURE, v)
     suspend fun setVolumeKeysCapture(v: Boolean) = put(K.VOLUME_KEYS, v)
     suspend fun setKeepScreenOn(v: Boolean) = put(K.KEEP_SCREEN_ON, v)
     suspend fun setShowSeconds(v: Boolean) = put(K.SHOW_SECONDS, v)
@@ -285,6 +293,7 @@ class SettingsRepository(private val context: Context) {
             personName = El(side = align),
             address = El(side = detailSide, on = showAddress),
             gps = El(side = detailSide, on = showGps),
+            altitude = El(side = detailSide, on = false),
             note = El(side = detailSide),
         )
     }

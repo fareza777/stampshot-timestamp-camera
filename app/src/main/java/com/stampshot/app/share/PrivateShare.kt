@@ -114,6 +114,7 @@ object PrivateShare {
         city = r.city,
         latitude = r.latitude,
         longitude = r.longitude,
+        altitude = r.altitude,
         elements = StampElements.fromJson(r.elementsJson),
         addressMode = r.addressMode?.let {
             runCatching { AddressMode.valueOf(it) }.getOrNull()

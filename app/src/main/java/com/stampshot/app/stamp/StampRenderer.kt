@@ -145,9 +145,12 @@ object StampRenderer {
 
     // ---------- Shared layout ----------
 
-    /** Paint for one stamp line: base size scaled by the element's size setting. */
+    /**
+     * Paint for one stamp line. All elements share one base size — "bold"
+     * only switches weight/color; sizing comes from the element's S/M/L.
+     */
     private fun linePaint(theme: Theme, opts: StampOptions, wf: Float, line: StampLine): Paint {
-        val base = wf * (if (line.bold) 0.034f else 0.028f) * opts.fontScale * line.size.scale
+        val base = wf * 0.030f * opts.fontScale * line.size.scale
         val p = textPaint(base, if (line.bold) theme.text else theme.textDim, line.bold, opts.font)
         if (opts.transparent) p.setShadowLayer(base * 0.16f, 0f, base * 0.05f, theme.shadow)
         return p
@@ -403,7 +406,7 @@ object StampRenderer {
         val left = lines.filter { it.side == StampAlign.LEFT }
         val right = lines.filter { it.side == StampAlign.RIGHT }
         fun paintOf(l: StampLine): Paint {
-            val base = wf * (if (l.bold) 0.032f else 0.027f) * s * l.size.scale
+            val base = wf * 0.030f * s * l.size.scale
             return textPaint(base, withAlpha(if (l.bold) textColor else dimColor, opts.textOpacity), l.bold, opts.font)
         }
         val paints = HashMap<StampLine, Paint>(lines.size * 2)
