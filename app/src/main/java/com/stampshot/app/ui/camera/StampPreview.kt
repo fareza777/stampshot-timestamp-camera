@@ -134,9 +134,14 @@ fun StampPreview(
             else if (darkScene) Color(0xFF080A0E) else Color(0xFFFAFBFD)
         ).withOpacity(s.bgOpacity)
     // Shadow opposite of the text tone so transparent text stays readable.
+    // A forced text color always gets a contrasting halo, never scene-adaptive.
     val textShadow = if (s.stampTransparent) {
+        val haloDark = if (s.fontColorArgb != -1) {
+            val c = Color(s.fontColorArgb)
+            (0.2126f * c.red + 0.7152f * c.green + 0.0722f * c.blue) > 0.55f
+        } else darkScene
         Shadow(
-            color = if (darkScene) Color(0xC0000000) else Color(0xC8FFFFFF),
+            color = if (haloDark) Color(0xC0000000) else Color(0xC8FFFFFF),
             offset = Offset(0f, 1f),
             blurRadius = 6f,
         )

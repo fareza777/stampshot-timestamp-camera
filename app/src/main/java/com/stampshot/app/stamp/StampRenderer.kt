@@ -25,6 +25,9 @@ object StampRenderer {
     private const val DARK_SCENE_THRESHOLD = 105.0
 
     private class Theme(darkScene: Boolean, opts: StampOptions) {
+        private fun colorIsLight(argb: Int): Boolean =
+            0.2126 * Color.red(argb) + 0.7152 * Color.green(argb) + 0.0722 * Color.blue(argb) > 140
+
         private fun withAlpha(color: Int, opacity: Float): Int =
             Color.argb(
                 (Color.alpha(color) * opacity).toInt().coerceIn(0, 255),
@@ -51,8 +54,18 @@ object StampRenderer {
             else if (darkScene) Color.rgb(97, 200, 247) else Color.rgb(2, 119, 189),
             opts.textOpacity,
         )
-        /** Halo behind text in transparent mode: opposite of the text tone. */
-        val shadow: Int = if (darkScene) Color.argb(190, 0, 0, 0) else Color.argb(200, 255, 255, 255)
+        /**
+         * Halo behind text in transparent mode: opposite of the text tone.
+         * A forced text color always keeps a contrasting halo — e.g. forced
+         * white text keeps a dark halo even on a bright photo.
+         */
+        val shadow: Int = when {
+            opts.fontColorArgb != -1 ->
+                if (colorIsLight(opts.fontColorArgb)) Color.argb(190, 0, 0, 0)
+                else Color.argb(200, 255, 255, 255)
+            darkScene -> Color.argb(190, 0, 0, 0)
+            else -> Color.argb(200, 255, 255, 255)
+        }
     }
 
     fun render(source: Bitmap, info: StampInfo, style: StampStyle, opts: StampOptions = StampOptions()): Bitmap {

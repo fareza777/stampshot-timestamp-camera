@@ -9,14 +9,14 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -85,13 +85,15 @@ fun SettingsSheet(viewModel: MainViewModel, onDismiss: () -> Unit) {
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
-        Column(
+        // Lazy: rows compose only as they scroll into view — the sheet opens
+        // instantly instead of building ~60 rows eagerly.
+        LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .navigationBarsPadding()
-                .padding(horizontal = 20.dp, vertical = 8.dp),
+                .navigationBarsPadding(),
+            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
         ) {
+            item { Column {
             // ---------- Stamp style ----------
             SectionHeader("Stamp style")
             StampStyle.entries.forEach { style ->
@@ -119,6 +121,9 @@ fun SettingsSheet(viewModel: MainViewModel, onDismiss: () -> Unit) {
                 }
             }
 
+            } }
+
+            item { Column {
             // ---------- Appearance ----------
             SectionHeader("Stamp appearance")
             if (settings.style == StampStyle.MINIMAL_CORNER || settings.style == StampStyle.WORK_PROOF) {
@@ -166,6 +171,9 @@ fun SettingsSheet(viewModel: MainViewModel, onDismiss: () -> Unit) {
                 ) { viewModel.setBgOpacity(it) }
             }
 
+            } }
+
+            item { Column {
             // ---------- Stamp content ----------
             SectionHeader("Stamp text")
             Text(
@@ -285,6 +293,9 @@ fun SettingsSheet(viewModel: MainViewModel, onDismiss: () -> Unit) {
                 ) { viewModel.setNote(it) }
             }
 
+            } }
+
+            item { Column {
             // ---------- Camera ----------
             SectionHeader("Camera")
             ToggleRow(title = "Grid lines", checked = settings.showGrid) {
@@ -345,6 +356,9 @@ fun SettingsSheet(viewModel: MainViewModel, onDismiss: () -> Unit) {
                 selected = settings.fastCapture,
             ) { viewModel.setFastCapture(it) }
 
+            } }
+
+            item { Column {
             // ---------- Video ----------
             SectionHeader("Video")
             ChipRow(
@@ -358,6 +372,9 @@ fun SettingsSheet(viewModel: MainViewModel, onDismiss: () -> Unit) {
                 checked = settings.videoAudio,
             ) { viewModel.setVideoAudio(it) }
 
+            } }
+
+            item { Column {
             // ---------- Storage & sharing ----------
             SectionHeader("Storage & sharing")
             ToggleRow(
@@ -395,6 +412,7 @@ fun SettingsSheet(viewModel: MainViewModel, onDismiss: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(vertical = 16.dp),
             )
+            } }
         }
     }
 }
